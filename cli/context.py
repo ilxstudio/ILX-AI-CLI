@@ -245,6 +245,17 @@ class ContextManager:
         except Exception:
             pass
 
+        # Persistent project memory — inject if workspace has memory
+        if cfg.working_folder:
+            try:
+                from app.core.project_memory import get_memory
+                mem = get_memory(cfg.working_folder)
+                mem_block = mem.context_block(max_chars=1200)
+                if mem_block:
+                    base += "\n\n" + mem_block
+            except Exception:
+                pass
+
         ws_tree = self.workspace_tree()
         if ws_tree:
             base += (
@@ -352,7 +363,25 @@ class ContextManager:
         else:
             print(f"  {DIM}RAG index         not available{RESET}")
 
-        # Total estimate vs context window
+        # Persistent project memory stats
+        if self._cfg.working_folder:
+            try:
+                from app.core.project_memory import get_memory
+                mem_stats = get_memory(self._cfg.working_folder).stats()
+                n_facts = mem_stats.get("facts", 0)
+                n_fixes = mem_stats.get("fixes", 0)
+                n_sym   = mem_stats.get("symbols", 0)
+                if n_facts or n_fixes or n_sym:
+                    print(
+                        f"  {CYAN}Project memory {RESET}  "
+                        f"{n_facts} facts  {n_fixes} fixes  {n_sym} symbols"
+                    )
+                else:
+                    print(f"  {DIM}Project memory    empty (use /memory add){RESET}")
+            except Exception:
+                pass
+
+        # Total estimate vs context window + compression ratio
         total = sp_tokens + hist_tokens + pin_tokens
         num_ctx = getattr(self._cfg, "num_ctx", 4096)
         pct = int(total / num_ctx * 100) if num_ctx else 0
@@ -363,6 +392,11 @@ class ContextManager:
             f"\n  {col}Total  ~{total} tokens  [{bar}]  {pct}%"
             f"  of num_ctx={num_ctx}{RESET}"
         )
+        # Compression ratio: actual text chars vs token estimate
+        total_chars = sum(len(m.get("content", "")) for m in history)
+        if total_chars > 0:
+            ratio = total_chars / max(1, hist_tokens * 4)
+            print(f"  {DIM}Compression ratio  {ratio:.2f}x  ({total_chars} chars → ~{hist_tokens} tokens){RESET}")
         if pct >= 95:
             print(f"  {YELLOW}Context near limit — run /compact to free space.{RESET}")
         elif pct >= 80:

@@ -140,7 +140,7 @@ class ILXApp:
             "/errors", "/free", "/setup", "/trust",
             "/plan", "/review", "/fix-tests", "/index", "/research",
             "/route", "/benchmark", "/audit", "/sandbox", "/permission",
-            "/allow", "/deny", "/plugins", "/rollback", "/checkpoint",  # noqa: E501
+            "/allow", "/deny", "/plugins", "/rollback", "/checkpoint", "/memory",  # noqa: E501
         })
 
     def _register_commands(self) -> None:
@@ -166,6 +166,7 @@ class ILXApp:
         r.register("/trust",      lambda a: __import__("cli.commands.trust_dashboard", fromlist=["cmd_trust"]).cmd_trust(a, self._cfg) or False)      # noqa: E501
         r.register("/rollback",   lambda a: __import__("cli.commands.rollback_cmds", fromlist=["cmd_rollback"]).cmd_rollback(a, self._cfg) or False)   # noqa: E501
         r.register("/checkpoint", lambda a: __import__("cli.commands.rollback_cmds", fromlist=["cmd_checkpoint"]).cmd_checkpoint(a, self._cfg) or False)  # noqa: E501
+        r.register("/memory",     lambda a: __import__("cli.commands.memory_cmds", fromlist=["MemoryCommands"]).MemoryCommands(self._cfg).cmd_memory(a) or False)  # noqa: E501
 
     def _print_trust_summary(self) -> None:
         """Print a one-screen trust/config summary at startup (interactive only)."""
@@ -176,12 +177,15 @@ class ILXApp:
         from cli.rich_display import _emit_json, get_output_mode  # noqa: WPS347
 
         cfg = self._cfg
-        provider_str = getattr(cfg, "provider", "ollama")
-        model_str = getattr(cfg, "ollama_model", "") or getattr(cfg, "chat_model", "")
-        provider_label = f"{provider_str} / {model_str}" if model_str else provider_str
+        try:
+            from app.core.route_engine import free_tier_label as _ftl
+            provider_label = _ftl(cfg)
+        except Exception:
+            provider_str = getattr(cfg, "provider", "ollama")
+            model_str = getattr(cfg, "ollama_model", "") or getattr(cfg, "chat_model", "")
+            provider_label = f"{provider_str} / {model_str}" if model_str else provider_str
 
         workspace = getattr(cfg, "working_folder", "") or "~"
-
         perm_obj = getattr(cfg, "permission_mode", None)
         _perm_map = {"ask": "ask", "auto_approve": "auto-approve", "deny_all": "deny-all"}
         if perm_obj is not None:
@@ -189,7 +193,6 @@ class ILXApp:
             perm_label = _perm_map.get(perm_val, perm_val)
         else:
             perm_label = "ask"
-
         sandbox = getattr(cfg, "sandbox_mode", "workspace")
         network = getattr(cfg, "network_mode", "ask")
         tools = "enabled" if getattr(cfg, "tool_use_enabled", False) else "disabled"
@@ -375,21 +378,7 @@ class ILXApp:
                 print(f"  {YELLOW}Nothing to undo — history is empty.{RESET}")
 
         elif cmd == "/compact":
-            from app.core.spinner import Spinner
-            with Spinner("Summarizing conversation..."):
-                summary, old_count, savings = self._chat.compact()
-            if summary:
-                print(
-                    f"  {GREEN}Compacted {old_count} messages → 1 summary."
-                    f" Context reduced by ~{savings}t{RESET}"
-                )
-                print(f"\n  {DIM}Summary:{RESET}")
-                # Show the full summary so the user can verify accuracy
-                for line in summary.splitlines():
-                    print(f"  {DIM}{line}{RESET}")
-                print()
-            else:
-                print(f"  {YELLOW}Not enough history to compact (need 4+ messages).{RESET}")
+            self._cmd_compact()
 
         elif cmd == "/history":
             sessions = self._sessions.list(10)
@@ -398,23 +387,7 @@ class ILXApp:
             self._do_resume(args)
 
         elif cmd == "/session":
-            sub = args[0].lower() if args else "list"
-            if sub == "list":
-                sessions = self._sessions.list(10)
-                print(self._sessions.format_listing(sessions))
-            elif sub == "name" and len(args) >= 2:
-                title = " ".join(args[1:])
-                sessions = self._sessions.list(1)
-                if sessions:
-                    self._sessions.set_title(sessions[0], title)
-                    print(f"  {GREEN}Session named: {title}{RESET}")
-                else:
-                    print(f"  {YELLOW}No saved session to name. Save first with /quit.{RESET}")
-            elif sub == "search" and len(args) >= 2:
-                query = " ".join(args[1:]).lower()
-                self._do_session_search(query)
-            else:
-                print(f"  {YELLOW}Usage: /session list | name <title> | search <query>{RESET}")
+            self._cmd_session(args)
 
         elif cmd == "/status":
             self._settings.cmd_status()
@@ -453,19 +426,16 @@ class ILXApp:
             self._perm.cmd_permission(args)
         elif cmd == "/workspace":
             self._settings.cmd_workspace(on_change=self._ctx.set_workspace)
-
         elif cmd == "/rules":
             self._ws.cmd_rules(args)
         elif cmd == "/init":
             self._ws.cmd_init(args)
         elif cmd == "/diag":
             self._ws.cmd_diag()
-
         elif cmd == "/git":
             self._git.cmd_git(args)
         elif cmd == "/branch":
             self._git.cmd_branch(args)
-
         elif cmd == "/run":
             self._dev.cmd_run(args)
         elif cmd == "/test":
@@ -512,7 +482,6 @@ class ILXApp:
             self._setup.cmd_setup(args)
         elif cmd == "/errors":
             self._settings.cmd_errors(args)
-
         elif cmd == "/sandbox":
             self._sandbox.cmd_sandbox(args)
         elif cmd == "/allow":
@@ -521,7 +490,6 @@ class ILXApp:
             self._allowlist.cmd_deny(args)
         elif cmd == "/allowlist":
             self._allowlist.cmd_allowlist(args)
-
         elif cmd == "/review":
             self._review.cmd_review(args)
         elif cmd == "/fix-tests":
@@ -530,7 +498,6 @@ class ILXApp:
             self._index.cmd_index(args)
         elif cmd == "/plan":
             self._plan.cmd_plan(args, self._chat.history)
-
         elif cmd == "/format":
             self._dev.cmd_format()
         elif cmd == "/kill":
@@ -542,12 +509,7 @@ class ILXApp:
         elif cmd == "/scaffold":
             self._ws.cmd_scaffold(args)
         elif cmd == "/template":
-            from cli.commands.workspace_scaffold import TemplateListCommand
-            if not args or args[0].lower() == "list":
-                TemplateListCommand().cmd_template_list()
-            else:
-                from cli.display import RESET, YELLOW
-                print(f"{YELLOW}Usage: /template list{RESET}")
+            self._cmd_template(args)
         elif cmd == "/upgrade":
             from cli.commands.workspace_upgrade import UpgradeCommand
             UpgradeCommand(self._cfg).cmd_upgrade(args)
@@ -567,37 +529,16 @@ class ILXApp:
             self._settings.cmd_tools(args)
         elif cmd == "/mcp":
             self._cmd_mcp(args)
-
         elif cmd == "/metrics":
             self._metrics.cmd_metrics()
-
         elif cmd == "/attach":
             self._dev.cmd_attach(args)
         elif cmd == "/context":
-            sub = args[0].lower() if args else "show"
-            if sub in ("show", "stats") or not args:
-                # /context and /context stats both show full stats
-                self._ctx.describe_current(
-                    self._chat.history, self._chat.pinned, rag=self._rag
-                )
-            elif sub == "clear":
-                # Full clear — alias for /clear (history + pinned + RAG index)
-                self._chat.clear()
-                self._rag.clear()
-                from cli.display import DIM, RESET
-                print(f"  {DIM}Context cleared: history, pinned files, and RAG index reset.{RESET}")
-            else:
-                from cli.display import RESET, YELLOW
-                print(
-                    f"  {YELLOW}Usage: /context [show|stats]  |  /context clear{RESET}"
-                )
-
+            self._cmd_context(args)
         elif cmd == "/version":
             self._cmd_version()
-
         elif cmd == "/export":
             self._cmd_export(args)
-
         elif cmd == "/alias":
             self._cmd_alias(args)
 
@@ -675,6 +616,59 @@ class ILXApp:
         except (EOFError, KeyboardInterrupt):
             ans = "n"
         return ans in ("y", "yes")
+
+    def _cmd_compact(self) -> None:
+        from app.core.spinner import Spinner
+        from cli.display import DIM, GREEN, RESET, YELLOW
+        with Spinner("Summarizing conversation..."):
+            summary, old_count, savings = self._chat.compact()
+        if summary:
+            print(f"  {GREEN}Compacted {old_count} messages → 1 summary. Context reduced by ~{savings}t{RESET}")
+            print(f"\n  {DIM}Summary:{RESET}")
+            for line in summary.splitlines():
+                print(f"  {DIM}{line}{RESET}")
+            print()
+        else:
+            print(f"  {YELLOW}Not enough history to compact (need 4+ messages).{RESET}")
+
+    def _cmd_session(self, args: list[str]) -> None:
+        from cli.display import GREEN, RESET, YELLOW
+        sub = args[0].lower() if args else "list"
+        if sub == "list":
+            print(self._sessions.format_listing(self._sessions.list(10)))
+        elif sub == "name" and len(args) >= 2:
+            title = " ".join(args[1:])
+            sessions = self._sessions.list(1)
+            if sessions:
+                self._sessions.set_title(sessions[0], title)
+                print(f"  {GREEN}Session named: {title}{RESET}")
+            else:
+                print(f"  {YELLOW}No saved session to name. Save first with /quit.{RESET}")
+        elif sub == "search" and len(args) >= 2:
+            self._do_session_search(" ".join(args[1:]).lower())
+        else:
+            print(f"  {YELLOW}Usage: /session list | name <title> | search <query>{RESET}")
+
+    def _cmd_template(self, args: list[str]) -> None:
+        from cli.commands.workspace_scaffold import TemplateListCommand
+        if not args or args[0].lower() == "list":
+            TemplateListCommand().cmd_template_list()
+        else:
+            from cli.display import RESET, YELLOW
+            print(f"{YELLOW}Usage: /template list{RESET}")
+
+    def _cmd_context(self, args: list[str]) -> None:
+        sub = args[0].lower() if args else "show"
+        if sub in ("show", "stats") or not args:
+            self._ctx.describe_current(self._chat.history, self._chat.pinned, rag=self._rag)
+        elif sub == "clear":
+            self._chat.clear()
+            self._rag.clear()
+            from cli.display import DIM, RESET
+            print(f"  {DIM}Context cleared: history, pinned files, and RAG index reset.{RESET}")
+        else:
+            from cli.display import RESET, YELLOW
+            print(f"  {YELLOW}Usage: /context [show|stats]  |  /context clear{RESET}")
 
     def _do_session_search(self, query: str) -> None:
         import json
