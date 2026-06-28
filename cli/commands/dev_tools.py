@@ -106,6 +106,9 @@ class DevToolsCommands(DevToolsQualityMixin):
         col = GREEN if task.status == TaskStatus.COMPLETED else (
               YELLOW if task.status in (TaskStatus.KILLED, TaskStatus.TIMEOUT) else RED)
         print(f"  {col}[{task.status.value}  exit={task.exit_code}  {task.elapsed:.1f}s]{RESET}")
+        if task.status == TaskStatus.TIMEOUT:
+            print(f"  {YELLOW}Tip: if your program waits for keyboard input, it will always timeout here.{RESET}")
+            print(f"  {DIM}Run non-interactive scripts or pipe input: /run python script.py < input.txt{RESET}")
 
     # ── /kill ─────────────────────────────────────────────────────────────────
 
@@ -133,9 +136,28 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(f"{YELLOW}pytest not found. Install with: pip install pytest{RESET}")
             return
 
-        # Detect --cov flag
+        # Detect --cov flag and filter pytest path args
         use_cov = "--cov" in args
-        filtered_args = [a for a in args if a != "--cov"]
+        raw_args = [a for a in args if a != "--cov"]
+
+        # Separate path args from pytest flags; guard against non-test files
+        path_args: list[str] = []
+        flag_args: list[str] = []
+        for a in raw_args:
+            p = Path(wf) / a if not Path(a).is_absolute() else Path(a)
+            if p.suffix == ".py" and not Path(a).name.startswith("test_") and "tests" not in Path(a).parts:
+                print(f"  {YELLOW}'{a}' is not a test file — running pytest on tests/ instead.{RESET}")
+                print(f"  {DIM}To test a specific module, create a test_*.py file for it.{RESET}")
+            elif a.startswith("-") or not a.endswith(".py"):
+                flag_args.append(a)
+            else:
+                path_args.append(a)
+
+        # Default test target: tests/ dir if it exists, else workspace root
+        if not path_args:
+            tests_dir = Path(wf) / "tests"
+            path_args = ["tests"] if tests_dir.is_dir() else ["."]
+
         cmd = [pytest_bin, "-v", "--tb=short"]
         import os as _os
         cov_threshold = _os.environ.get("ILX_COV_THRESHOLD", "")
@@ -146,7 +168,7 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(f"{DIM}Running pytest with coverage in {wf}...{RESET}")
         else:
             print(f"{DIM}Running pytest in {wf}...{RESET}")
-        cmd += filtered_args
+        cmd += flag_args + path_args
 
         r = process_runner.run(cmd, cwd=wf, timeout=180)
         if r.returncode == -1 and "Timed out" in r.stderr:
