@@ -38,6 +38,28 @@ from pathlib import Path
 
 _log = logging.getLogger("ilx_cli.supervisor")
 
+_SCRIPT_HINTS: dict[str, str] = {
+    ".py":  "python",
+    ".pyw": "python",
+    ".js":  "node",
+    ".mjs": "node",
+    ".ts":  "npx ts-node",
+    ".rb":  "ruby",
+    ".go":  "go run",
+    ".sh":  "bash",
+}
+
+
+def _hint_for_script(command: list[str]) -> None:
+    """Print a helpful suggestion when a bare script file fails to launch."""
+    if not command:
+        return
+    ext = Path(command[0]).suffix.lower()
+    interp = _SCRIPT_HINTS.get(ext)
+    if interp:
+        print(f"  Hint: run script files with their interpreter — e.g.  /run {interp} {command[0]}")
+        print(f"  (ILX AI auto-detects .py, .js and other extensions — just use /run {command[0]} again)")
+
 
 class TaskStatus(str, Enum):
     QUEUED    = "queued"
@@ -214,6 +236,16 @@ class ProcessSupervisor:
             with self._lock:
                 self._tasks[task_id] = task
             _log.error("Command not found: %s", command[0])
+            _hint_for_script(command)
+            return task
+        except OSError as exc:
+            task.status    = TaskStatus.FAILED
+            task.exit_code = -1
+            task.finished_at = time.monotonic()
+            with self._lock:
+                self._tasks[task_id] = task
+            _log.error("Failed to spawn %s: %s", command, exc)
+            _hint_for_script(command)
             return task
         except Exception as exc:
             task.status    = TaskStatus.FAILED

@@ -22,6 +22,34 @@ _SKIP_DIRS = {
 from cli.commands.dev_tools_extra import DevToolsExtraCommands
 from cli.commands.dev_tools_quality import DevToolsQualityMixin
 
+_INTERPRETER_MAP = {
+    ".py":   ["python"],
+    ".pyw":  ["python"],
+    ".js":   ["node"],
+    ".mjs":  ["node"],
+    ".cjs":  ["node"],
+    ".ts":   ["npx", "ts-node"],
+    ".sh":   ["bash"],
+    ".bash": ["bash"],
+    ".rb":   ["ruby"],
+    ".go":   ["go", "run"],
+    ".rs":   [],  # needs cargo run — handled below
+}
+
+
+def _resolve_run_args(args: list[str]) -> list[str]:
+    """Prepend interpreter if args[0] is a bare script file with a known extension."""
+    if not args:
+        return ["python", "main.py"]
+    first = args[0]
+    ext = Path(first).suffix.lower()
+    if ext not in _INTERPRETER_MAP:
+        return args  # already has interpreter, or unknown — pass through
+    interp = _INTERPRETER_MAP[ext]
+    if not interp:
+        return args  # e.g. .rs — user must type `cargo run`
+    return interp + args
+
 
 class DevToolsCommands(DevToolsQualityMixin):
     """Handles all developer-tool slash commands."""
@@ -59,7 +87,7 @@ class DevToolsCommands(DevToolsQualityMixin):
         wf = self._require_workspace()
         if not wf:
             return
-        run_args = args if args else ["python", "main.py"]
+        run_args = _resolve_run_args(args)
         run_cmd  = " ".join(run_args)
         timeout  = self.cfg.exec_timeout or 60
         print(f"{DIM}Running: {run_cmd}  (timeout {timeout}s)  — tracked by supervisor{RESET}")
