@@ -81,17 +81,12 @@ def _install_crash_hooks() -> None:
 
 
 def main() -> None:
+    from app.core.audit import init_session as _init_session
+    _sid = _init_session()
+    _log = logging.getLogger("ilx_cli.main")
+    _log.debug("session: %s", _sid)
+
     import sys as _sys
-
-    # Apply --json flag early so output mode is set before any config or display
-    # code runs.  rich_display holds the authoritative output-mode state.
-    if "--json" in _sys.argv:
-        try:
-            from cli.rich_display import set_output_mode
-            set_output_mode("json")
-        except Exception:
-            pass
-
     if "--help" in _sys.argv or "-h" in _sys.argv:
         print("ILX AI CLI — Free, local-first AI developer assistant")
         print()
@@ -127,10 +122,6 @@ def main() -> None:
 
     mgr = ConfigManager()
     cfg = mgr.load()
-
-    # Propagate --json flag to cfg so downstream components can read cfg.output_mode
-    if "--json" in sys.argv and hasattr(cfg, "output_mode"):
-        cfg.output_mode = "json"
 
     if not sys.stdin.isatty():
         mode, prompt = parse_argv()

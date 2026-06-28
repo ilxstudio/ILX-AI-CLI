@@ -228,6 +228,13 @@ def _run_hook(spec: _HookSpec, payload: dict) -> tuple[int, str]:
     valid, reason = _validate_hook_command(args)
     if not valid:
         _log.warning("hook command rejected (security validation failed): %s — %s", spec.command, reason)
+        from app.core import audit as _audit
+        _audit.log_risk_event(
+            kind="hook_rejected",
+            detail=f"Hook command rejected — {reason}",
+            severity="medium",
+            target=cmd[:100],
+        )
         return 1, f"hook rejected: {reason}"
 
     r = process_runner.run(args, timeout=int(spec.timeout), env=_sanitized_env())

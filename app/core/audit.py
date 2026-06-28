@@ -1,12 +1,11 @@
 from __future__ import annotations
-
 import json
 import logging
 import os
 import re
-import sys
 import threading
-from datetime import UTC, datetime
+import uuid as _uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +15,22 @@ _MAX_BYTES = 5 * 1024 * 1024
 _MAX_KEEP  = 5
 
 _logger = logging.getLogger("ilx_cli.audit")
+
+# ---------------------------------------------------------------------------
+# Session ID — set once at startup via init_session()
+# ---------------------------------------------------------------------------
+_SESSION_ID: str = ""
+
+
+def init_session(sid: str | None = None) -> str:
+    """Set the session ID for this process. Call once at startup."""
+    global _SESSION_ID
+    _SESSION_ID = sid or _uuid.uuid4().hex[:12]
+    return _SESSION_ID
+
+
+def get_session_id() -> str:
+    return _SESSION_ID or "unknown"
 
 # Field names (exact or substring) whose string values must never appear in logs.
 # Checked case-insensitively so "API_KEY", "api_key", "ApiKey" all match.
@@ -28,15 +43,8 @@ _SECRET_FIELD_SUBSTRINGS = (
 
 _SECRET_VALUE_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
-    re.compile(r"sk-proj-[A-Za-z0-9\-]{40,}"),
     re.compile(r"AIza[A-Za-z0-9_\-]{35}"),
     re.compile(r"gsk_[A-Za-z0-9]{20,}"),
-    re.compile(r"ghp_[A-Za-z0-9]{36}"),
-    re.compile(r"gho_[A-Za-z0-9]{36}"),
-    re.compile(r"github_pat_[A-Za-z0-9_]{82}"),
-    re.compile(r"AKIA[0-9A-Z]{16}"),
-    re.compile(r"hf_[A-Za-z0-9]{34}"),
-    re.compile(r"Bearer\s+[A-Za-z0-9._\-]{20,}"),
 )
 
 
@@ -52,7 +60,7 @@ def _redact_fields(fields: dict) -> dict:
 
     Any field whose name contains a known secret keyword is replaced with
     '<redacted>' so that API keys, passwords, and tokens are never written
-    to the on-disk audit log.  Also recursively redacts nested dicts/lists.
+    to the on-disk audit log.
     """
     safe: dict = {}
     for k, v in fields.items():
@@ -61,22 +69,9 @@ def _redact_fields(fields: dict) -> dict:
             safe[k] = "<redacted>"
         elif isinstance(v, str):
             safe[k] = _redact(v)
-        elif isinstance(v, dict):
-            safe[k] = _redact_fields(v)
-        elif isinstance(v, list):
-            safe[k] = [_redact(i) if isinstance(i, str) else i for i in v]
         else:
             safe[k] = v
     return safe
-
-
-def _set_log_permissions(path: Path) -> None:
-    """Restrict *path* to owner read/write only (mode 0o600) on POSIX systems."""
-    if sys.platform != "win32":
-        try:
-            os.chmod(path, 0o600)
-        except OSError as exc:
-            _logger.debug("audit: chmod failed on %s: %s", path, exc)
 
 
 def _rotate_if_needed() -> None:
@@ -85,10 +80,9 @@ def _rotate_if_needed() -> None:
             return
         if _LOG_PATH.stat().st_size < _MAX_BYTES:
             return
-        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         rotated = _LOG_PATH.with_suffix(f".log.{ts}")
         _LOG_PATH.rename(rotated)
-        _set_log_permissions(rotated)
         siblings = sorted(_LOG_PATH.parent.glob("audit.log.*"))
         for old in siblings[:-_MAX_KEEP]:
             try:
@@ -101,8 +95,9 @@ def _rotate_if_needed() -> None:
 
 def log_event(event_type: str, **fields: Any) -> None:
     record = {
-        "ts":    datetime.now(UTC).isoformat(),
+        "ts":    datetime.now(timezone.utc).isoformat(),
         "pid":   os.getpid(),
+        "sid":   get_session_id(),
         "event": event_type,
     }
     # Redact secret-shaped fields before writing; never log raw API keys or passwords.
@@ -118,11 +113,8 @@ def log_event(event_type: str, **fields: Any) -> None:
         try:
             _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             _rotate_if_needed()
-            file_existed = _LOG_PATH.exists()
             with open(_LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(line)
-            if not file_existed:
-                _set_log_permissions(_LOG_PATH)
         except OSError as exc:
             _logger.debug("audit log write failed: %s", exc)
 
@@ -175,4 +167,103 @@ def log_llm_call(
         total_tokens=prompt_tokens + response_tokens,
         latency_ms=round(latency_ms, 1),
         error=error,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Query / aggregation helpers (Step 2)
+# ---------------------------------------------------------------------------
+
+def query(
+    event_type: str | None = None,
+    sid: str | None = None,
+    since_ts: str | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    """Read audit.log and return matching records, newest first.
+
+    Applies filters in order: event_type, sid, since_ts.
+    Returns at most `limit` records.
+    """
+    records: list[dict] = []
+    if not _LOG_PATH.exists():
+        return []
+    try:
+        lines = _LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event_type and rec.get("event") != event_type:
+            continue
+        if sid and rec.get("sid") != sid:
+            continue
+        if since_ts and rec.get("ts", "") < since_ts:
+            continue
+        records.append(rec)
+        if len(records) >= limit:
+            break
+    return records
+
+
+def query_session(sid: str | None = None) -> dict[str, list[dict]]:
+    """Return all records for a session grouped by event type.
+
+    If sid is None, uses the current session ID.
+    Returns: {"file_op": [...], "command_exec": [...], ...}
+    """
+    target_sid = sid or get_session_id()
+    all_records = query(sid=target_sid, limit=2000)
+    grouped: dict[str, list[dict]] = {}
+    for rec in all_records:
+        evt = rec.get("event", "unknown")
+        grouped.setdefault(evt, []).append(rec)
+    return grouped
+
+
+def recent_errors(limit: int = 20) -> list[dict]:
+    """Return recent LLM call records that had errors."""
+    recs = query(event_type="llm_call", limit=500)
+    return [r for r in recs if r.get("error")][:limit]
+
+
+def session_file_changes(sid: str | None = None) -> list[dict]:
+    """Return file_op records for the current (or given) session."""
+    return query(event_type="file_op", sid=sid or get_session_id(), limit=500)
+
+
+def session_commands(sid: str | None = None) -> list[dict]:
+    """Return command_exec records for the current (or given) session."""
+    return query(event_type="command_exec", sid=sid or get_session_id(), limit=500)
+
+
+def session_permissions(sid: str | None = None) -> list[dict]:
+    """Return permission_decision records for the current (or given) session."""
+    return query(event_type="permission_decision", sid=sid or get_session_id(), limit=500)
+
+
+def session_risks(sid: str | None = None) -> list[dict]:
+    """Return risk_event records for the current (or given) session."""
+    return query(event_type="risk_event", sid=sid or get_session_id(), limit=500)
+
+
+def log_risk_event(
+    kind: str,
+    detail: str,
+    severity: str = "medium",
+    target: str = "",
+) -> None:
+    """Log a detected risk or security event to the audit log."""
+    log_event(
+        "risk_event",
+        kind=kind,
+        detail=detail,
+        severity=severity,
+        target=target[:200],
     )

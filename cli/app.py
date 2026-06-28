@@ -137,7 +137,7 @@ class ILXApp:
             "/logs", "/scaffold", "/template", "/upgrade", "/readme", "/convert",
             "/fetch", "/tool", "/ssh", "/tools", "/mcp", "/metrics", "/attach",
             "/context", "/version", "/export", "/alias", "/copy",
-            "/errors", "/free", "/setup",
+            "/errors", "/free", "/setup", "/trust",
             "/plan", "/review", "/fix-tests", "/index", "/research",
             "/route", "/benchmark", "/audit", "/sandbox", "/permission",
             "/allow", "/deny", "/plugins",  # noqa: E501
@@ -163,6 +163,8 @@ class ILXApp:
         r.register("/deny",      lambda args: self._allowlist.cmd_deny(args) or False)
         r.register("/allowlist", lambda args: self._allowlist.cmd_allowlist(args) or False)
         r.register("/plugins", lambda a: __import__("cli.commands.plugin_cmds", fromlist=["cmd_plugins"]).cmd_plugins(a, self._cfg) or False)  # noqa: E501
+        from cli.commands.trust_dashboard import cmd_trust
+        r.register("/trust", lambda args: cmd_trust(args, self._cfg) or False)
 
     def _print_trust_summary(self) -> None:
         """Print a one-screen trust/config summary at startup (interactive only)."""

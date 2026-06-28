@@ -122,6 +122,12 @@ class PermissionEngine:
                 "sandbox: permitted command may access paths outside workspace '%s': %s",
                 wf, target[:80],
             )
+            audit.log_risk_event(
+                kind="sandbox_escape_attempt",
+                detail=f"Command may access paths outside workspace: {target[:80]}",
+                severity="medium",
+                target=target,
+            )
 
     def request_permission(self, operation: FileOperation) -> bool:
         mode = self._config.permission_mode
@@ -141,6 +147,12 @@ class PermissionEngine:
                 "Operation auto-denied: too many denials for kind=%s in the last 60s",
                 kind,
             )
+            audit.log_risk_event(
+                kind="rate_limited",
+                detail=f"Operation auto-denied after repeated denials for kind={kind}",
+                severity="medium",
+                target=target,
+            )
             return False
 
         # Destructive command warning — logged before allowlist check
@@ -149,6 +161,12 @@ class PermissionEngine:
                 if pattern in target:
                     _log.warning(
                         "Destructive command pattern detected in target: %s", target[:120]
+                    )
+                    audit.log_risk_event(
+                        kind="destructive_command",
+                        detail=f"Destructive pattern '{pattern}' in: {target[:100]}",
+                        severity="high",
+                        target=target,
                     )
                     break
 

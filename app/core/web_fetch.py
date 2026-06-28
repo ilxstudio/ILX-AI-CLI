@@ -144,6 +144,13 @@ def fetch_url(url: str, timeout: int = 15) -> dict:
 
     ssrf_err = _check_ssrf(hostname)
     if ssrf_err:
+        from app.core import audit as _audit
+        _audit.log_risk_event(
+            kind="ssrf_blocked",
+            detail=f"SSRF protection blocked request to {hostname}",
+            severity="high",
+            target=url,
+        )
         return {
             **_empty,
             "error": (
@@ -170,6 +177,19 @@ def fetch_url(url: str, timeout: int = 15) -> dict:
         return {**_empty, "error": f"Request failed: {exc}"}
     except Exception as exc:
         return {**_empty, "error": str(exc)}
+
+    # Reject non-text content types (images, video, audio, binary) — log the event
+    _ct_lower = content_type.lower().split(";")[0].strip()
+    _BLOCKED_CT_PREFIXES = ("image/", "video/", "audio/", "application/octet-stream")
+    if any(_ct_lower.startswith(pfx) for pfx in _BLOCKED_CT_PREFIXES):
+        from app.core import audit as _audit
+        _audit.log_risk_event(
+            kind="unsafe_content_type",
+            detail=f"Blocked response with Content-Type: {content_type}",
+            severity="low",
+            target=url,
+        )
+        return {**_empty, "error": f"Blocked non-text Content-Type: {content_type}"}
 
     # Detect charset from Content-Type header
     charset = "utf-8"
