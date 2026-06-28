@@ -14,9 +14,9 @@ _log = logging.getLogger("ilx_cli.ssh_cmds")
 class SSHCommands:
     """Handles all /ssh sub-commands."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
-        self._client: "SSHClient | None" = None
+        self._client: SSHClient | None = None
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -33,7 +33,7 @@ class SSHCommands:
         /ssh download <remote> <local>     — download a file
         /ssh close                         — disconnect
         """
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
+        from cli.display import RESET, YELLOW
 
         if not args:
             self._print_usage()
@@ -80,8 +80,8 @@ class SSHCommands:
     # ------------------------------------------------------------------
 
     def _do_connect(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
         from app.core.ssh_client import SSHClient
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         target = args[0]
         if "@" not in target:
@@ -132,7 +132,7 @@ class SSHCommands:
             print(f"  {DIM}Run /ssh help for setup instructions.{RESET}")
 
     def _do_run(self, command: str) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import DIM, RED, RESET, YELLOW
 
         if self._client is None:
             print(f"  {YELLOW}Not connected. Use /ssh user@host to connect first.{RESET}")
@@ -153,7 +153,7 @@ class SSHCommands:
             print(f"  {RED}Exit code {exit_code}{RESET}")
 
     def _do_upload(self, local_path: str, remote_path: str) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if self._client is None:
             print(f"  {YELLOW}Not connected. Use /ssh user@host to connect first.{RESET}")
@@ -167,7 +167,7 @@ class SSHCommands:
             print(f"  {RED}Upload failed:{RESET} {result['error']}")
 
     def _do_download(self, remote_path: str, local_path: str) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if self._client is None:
             print(f"  {YELLOW}Not connected. Use /ssh user@host to connect first.{RESET}")
@@ -181,7 +181,7 @@ class SSHCommands:
             print(f"  {RED}Download failed:{RESET} {result['error']}")
 
     def _do_close(self) -> None:
-        from cli.display import DIM, GREEN, YELLOW, RESET
+        from cli.display import GREEN, RESET, YELLOW
 
         if self._client is None:
             print(f"  {YELLOW}No active SSH connection.{RESET}")
@@ -196,7 +196,7 @@ class SSHCommands:
     # ------------------------------------------------------------------
 
     def _print_usage(self) -> None:
-        from cli.display import CYAN, YELLOW, RESET
+        from cli.display import CYAN, RESET, YELLOW
 
         print(f"""
   {YELLOW}SSH Commands:{RESET}

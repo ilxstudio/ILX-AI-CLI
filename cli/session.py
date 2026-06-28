@@ -20,7 +20,7 @@ class SessionManager:
     def __init__(self, session_dir: Path | None = None) -> None:
         self._dir = session_dir or _SESSION_DIR
 
-    def save(self, history: list[dict], cfg: "AppConfig", title: str = "") -> Path | None:
+    def save(self, history: list[dict], cfg: AppConfig, title: str = "") -> Path | None:
         """Persist history to a timestamped JSONL file. Returns path or None on error."""
         if not history:
             return None
@@ -91,7 +91,7 @@ class SessionManager:
         except (OSError, json.JSONDecodeError):
             pass
 
-    def export_markdown(self, history: list[dict], cfg: "AppConfig",
+    def export_markdown(self, history: list[dict], cfg: AppConfig,
                         path: Path | None = None) -> Path | None:
         """Export current conversation history to a Markdown file.
 
@@ -108,7 +108,7 @@ class SessionManager:
             path = desktop / f"ilx_export_{ts}.md"
         try:
             lines: list[str] = [
-                f"# ILX AI CLI — Conversation Export\n",
+                "# ILX AI CLI — Conversation Export\n",
                 f"**Exported:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
                 f"**Provider:** {cfg.provider}  **Model:** {cfg.ollama_model}  ",
                 f"**Workspace:** {cfg.working_folder}\n",

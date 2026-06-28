@@ -64,6 +64,7 @@ def test_ssh_setup_help_contains_keygen(capsys):
     assert has_password, f"Expected 'password' in help. Got: {output[:300]!r}"
 
 
+@pytest.mark.security
 def test_ssh_connection_failure_graceful():
     """SSHClient.connect() with a non-existent host returns ok=False without raising."""
     from app.core.ssh_client import SSHClient
@@ -101,6 +102,7 @@ def test_ssh_connection_failure_graceful():
 # G. Secret store
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@pytest.mark.security
 def test_get_api_key_no_keyring_returns_empty():
     """get_api_key() returns '' when keyring raises NoKeyringError."""
     import keyring.errors
@@ -117,6 +119,7 @@ def test_get_api_key_no_keyring_returns_empty():
     assert key == "", f"Expected '' when NoKeyringError raised, got {key!r}"
 
 
+@pytest.mark.security
 def test_set_api_key_failure_returns_false():
     """set_api_key() returns False when keyring.set_password raises an exception."""
     from app.core import secret_store

@@ -142,11 +142,11 @@ def test_expand_at_paths_real(ctx):
     assert ok, f"Expected {test_file} in found={found}"
 
 
-def test_workspace_tree_empty(cfg):
+def test_workspace_tree_empty(cfg, tmp_path):
     from cli.context import ContextManager
     from app.core.config import AppConfig
     empty_cfg = AppConfig()
-    empty_cfg.working_folder = "/nonexistent/path/xyz123"
+    empty_cfg.working_folder = str(tmp_path / "nonexistent_subdir_xyz")
     ctx_empty = ContextManager(empty_cfg)
     tree = ctx_empty.workspace_tree()
     ok = tree == ""

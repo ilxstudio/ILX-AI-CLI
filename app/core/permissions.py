@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import shlex
+import time
 from dataclasses import dataclass
 
 from app.core import audit
@@ -10,6 +11,32 @@ from app.core.config import PermissionMode
 from app.utils.file_utils import compute_diff
 
 _log = logging.getLogger("ilx_cli.permissions")
+
+
+class _DenialTracker:
+    """Tracks denial counts per operation kind with a sliding time window."""
+
+    _WINDOW_SECS = 60
+    _MAX_DENIALS = 5  # after this many denials in the window, auto-deny silently
+
+    def __init__(self) -> None:
+        self._counts: dict[str, list[float]] = {}  # kind -> list of timestamps
+
+    def record(self, kind: str) -> None:
+        now = time.monotonic()
+        ts = self._counts.setdefault(kind, [])
+        ts.append(now)
+        # Evict old entries
+        self._counts[kind] = [t for t in ts if now - t < self._WINDOW_SECS]
+
+    def is_throttled(self, kind: str) -> bool:
+        now = time.monotonic()
+        ts = self._counts.get(kind, [])
+        recent = [t for t in ts if now - t < self._WINDOW_SECS]
+        return len(recent) >= self._MAX_DENIALS
+
+
+_denial_tracker = _DenialTracker()
 
 _DESTRUCTIVE_PATTERNS: frozenset[str] = frozenset({
     "rm -rf",
@@ -65,7 +92,7 @@ class PermissionEngine:
     def _apply_profile(self, kind: str) -> str | None:
         """Return 'allow', 'deny', or None (defer to mode) based on active profile."""
         try:
-            from cli.commands.perm_cmds import PROFILES
+            from app.core.permission_profiles import PROFILES
             profile_name = getattr(self._config, "permission_profile", "coding")
             info = PROFILES.get(profile_name)
             if info is None:
@@ -107,6 +134,14 @@ class PermissionEngine:
             " ".join(operation.command) if operation.command else operation.path
         )
         mode_label = mode.value if hasattr(mode, "value") else str(mode)
+
+        # Rate-limit: auto-deny if this kind has been denied too often recently
+        if _denial_tracker.is_throttled(kind):
+            _log.warning(
+                "Operation auto-denied: too many denials for kind=%s in the last 60s",
+                kind,
+            )
+            return False
 
         # Destructive command warning — logged before allowlist check
         if kind in ("execute", "command") or operation.command:
@@ -200,6 +235,8 @@ class PermissionEngine:
             answer = "n"
 
         granted = answer in ("y", "yes")
+        if not granted:
+            _denial_tracker.record(kind)
         audit.log_permission_decision(
             kind=kind, target=target,
             decision="allowed" if granted else "denied",

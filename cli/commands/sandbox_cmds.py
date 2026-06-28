@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error, out_status
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
+from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
+from cli.display_compat import out
 
 _log = logging.getLogger("ilx_cli.sandbox_cmds")
 
@@ -22,7 +22,7 @@ SANDBOX_MODES = {
 class SandboxCommands:
     """/sandbox command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_sandbox(self, args: list[str]) -> None:
@@ -75,7 +75,7 @@ class SandboxCommands:
     def _sandbox_off(self, args: list[str]) -> None:
         if "--i-understand" not in args:
             out(f"\n  {YELLOW}Warning:{RESET} Disabling the sandbox removes all path containment.")
-            out(f"  The AI can read and write anywhere on your filesystem.")
+            out("  The AI can read and write anywhere on your filesystem.")
             out(f"  To confirm: {CYAN}/sandbox off --i-understand{RESET}\n")
             return
         self._set_mode("disabled")

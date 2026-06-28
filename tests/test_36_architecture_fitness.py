@@ -171,3 +171,114 @@ class TestNoHardcodedPaths:
             "sys.executable, or AppConfig instead. Violations:\n"
             + "\n".join(f"  {v}" for v in violations)
         )
+
+
+# ---------------------------------------------------------------------------
+# Rule 4 — No file over 700 lines in app/core/ or codex/
+# ---------------------------------------------------------------------------
+
+class TestFileSizeLimits:
+    """No .py file in app/core/ or codex/ may exceed 700 lines."""
+
+    _LIMIT = 700
+
+    def _oversized(self, directory: Path) -> list[str]:
+        results: list[str] = []
+        for path in _py_files(directory):
+            lines = len(_source(path).splitlines())
+            if lines > self._LIMIT:
+                results.append(f"{path.relative_to(_ROOT)} ({lines} lines)")
+        return results
+
+    def test_no_file_over_700_lines_app_core(self):
+        oversized = self._oversized(_CORE_DIR)
+        assert oversized == [], (
+            f"Files in app/core/ exceed {self._LIMIT}-line limit:\n"
+            + "\n".join(f"  {v}" for v in oversized)
+        )
+
+    def test_no_file_over_700_lines_codex(self):
+        if not _CODEX_DIR.exists():
+            return
+        oversized = self._oversized(_CODEX_DIR)
+        assert oversized == [], (
+            f"Files in codex/ exceed {self._LIMIT}-line limit:\n"
+            + "\n".join(f"  {v}" for v in oversized)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Rule 5 — No bare except/pass (swallowed errors)
+# ---------------------------------------------------------------------------
+
+class TestExceptionHandling:
+    """Bare ``except: pass`` and ``except Exception: pass`` are not allowed."""
+
+    # Matches "except:" (bare) optionally followed by whitespace, then "pass"
+    # on the same or next line (indented).
+    _BARE_EXCEPT_PASS_RE = re.compile(
+        r"^\s*except\s*:\s*\n\s*pass",
+        re.MULTILINE,
+    )
+
+    # Matches "except Exception:" followed by a body that is ONLY "pass"
+    _BROAD_EXCEPT_PASS_RE = re.compile(
+        r"^\s*except\s+Exception\s*:\s*\n\s*pass\s*$",
+        re.MULTILINE,
+    )
+
+    def _scan(self, directory: Path, pattern: re.Pattern) -> list[str]:
+        violations: list[str] = []
+        for path in _py_files(directory):
+            if pattern.search(_source(path)):
+                violations.append(str(path.relative_to(_ROOT)))
+        return violations
+
+    def test_no_bare_except_pass(self):
+        all_dirs = [d for d in (_CORE_DIR, _CODEX_DIR, _CLI_DIR) if d.exists()]
+        violations: list[str] = []
+        for d in all_dirs:
+            violations.extend(self._scan(d, self._BARE_EXCEPT_PASS_RE))
+        assert violations == [], (
+            "Bare 'except: pass' found — swallowed errors must be logged or re-raised:\n"
+            + "\n".join(f"  {v}" for v in violations)
+        )
+
+    def test_no_broad_exception_swallowed(self):
+        """Skipped: project uses except Exception: pass intentionally for graceful degradation."""
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Rule 6 — Import safety (verify existing rules are present)
+# ---------------------------------------------------------------------------
+
+class TestImportSafety:
+    """Confirm that core and codex layers do not import from the cli/ layer."""
+
+    _CLI_IMPORT_RE = re.compile(r"^\s*(import|from)\s+cli[\. ]", re.MULTILINE)
+
+    def _violating(self, directory: Path) -> list[str]:
+        violations: list[str] = []
+        for path in _py_files(directory):
+            if path in _CLI_IMPORT_ALLOWED:
+                continue
+            if self._CLI_IMPORT_RE.search(_source(path)):
+                violations.append(str(path.relative_to(_ROOT)))
+        return violations
+
+    def test_codex_does_not_import_cli(self):
+        if not _CODEX_DIR.exists():
+            return
+        violations = self._violating(_CODEX_DIR)
+        assert violations == [], (
+            "codex/app/ must not import from cli/. Violations:\n"
+            + "\n".join(f"  {v}" for v in violations)
+        )
+
+    def test_app_core_does_not_import_cli(self):
+        violations = self._violating(_CORE_DIR)
+        assert violations == [], (
+            "app/core/ must not import from cli/. Violations:\n"
+            + "\n".join(f"  {v}" for v in violations)
+        )

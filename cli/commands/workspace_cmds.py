@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 _log = logging.getLogger("ilx_cli.workspace")
 
 # Merge extra templates from the scaffold extension module
-from cli.commands.workspace_scaffold import EXTRA_INIT_TEMPLATES as _EXTRA
 from cli.commands.workspace_media_cmds import WorkspaceMediaMixin
+from cli.commands.workspace_scaffold import EXTRA_INIT_TEMPLATES as _EXTRA
 
 _INIT_TEMPLATES: dict[str, dict[str, str]] = {
     **_EXTRA,
@@ -160,12 +160,12 @@ class WorkspaceCommands(WorkspaceMediaMixin):
     /readme, /convert, /fetch, and /tool are provided by WorkspaceMediaMixin.
     """
 
-    def __init__(self, cfg: "AppConfig", ctx: "ContextManager") -> None:
+    def __init__(self, cfg: AppConfig, ctx: ContextManager) -> None:
         self.cfg = cfg
         self.ctx = ctx
 
     def cmd_add(self, rest: str, pinned: list[dict]) -> None:
-        from cli.display import BOLD, DIM, GREEN, YELLOW, RESET
+        from cli.display import BOLD, DIM, GREEN, RESET
         rest = rest.strip().strip('"').strip("'")
         if not rest:
             if not pinned:
@@ -183,7 +183,7 @@ class WorkspaceCommands(WorkspaceMediaMixin):
         print(f"  {GREEN}Pinned:{RESET} {rest}  ({len(ctx_block)} chars)")
 
     def cmd_drop(self, args: list[str], pinned: list[dict]) -> None:
-        from cli.display import GREEN, YELLOW, RESET
+        from cli.display import GREEN, RESET, YELLOW
         if not args:
             print(f"  {YELLOW}Usage: /drop <path-substring>{RESET}")
             return
@@ -216,8 +216,8 @@ class WorkspaceCommands(WorkspaceMediaMixin):
         return None
 
     def cmd_rules(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, YELLOW, RESET
         from app.core import project_rules
+        from cli.display import BOLD, DIM, GREEN, RESET, YELLOW
         if args and args[0] == "edit":
             wf = self.cfg.working_folder
             if not wf:
@@ -251,7 +251,7 @@ class WorkspaceCommands(WorkspaceMediaMixin):
                 print()
 
     def cmd_init(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, YELLOW, CYAN, RESET
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
         wf = self.cfg.working_folder
         if not wf:
             print(f"{YELLOW}No workspace set. Use /workspace to set one first.{RESET}")
@@ -311,9 +311,9 @@ class WorkspaceCommands(WorkspaceMediaMixin):
                         DockerCommands(self.cfg).scaffold_dockerfile(template, root)
 
     def cmd_scaffold(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
-        from codex.app.llm_client import get_llm_client
         from cli.commands.workspace_scaffold import ScaffoldExtensions
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
+        from codex.app.llm_client import get_llm_client
 
         # ── dry-run flag ────────────────────────────────────────────────────
         dry_run = "--dry-run" in args
@@ -325,8 +325,8 @@ class WorkspaceCommands(WorkspaceMediaMixin):
             avail = ", ".join(SCAFFOLD_TYPE_DESCRIPTIONS)
             print(f"{YELLOW}Usage: /scaffold <type> <name>{RESET}")
             print(f"  Types: {avail}")
-            print(f"  Example: /scaffold route users")
-            print(f"  Example: /scaffold component Button")
+            print("  Example: /scaffold route users")
+            print("  Example: /scaffold component Button")
             return
 
         scaffold_type = args[0].lower()
@@ -358,8 +358,8 @@ class WorkspaceCommands(WorkspaceMediaMixin):
             avail = ", ".join(_SCAFFOLD_PROMPTS)
             print(f"{YELLOW}Usage: /scaffold <type> <name>{RESET}")
             print(f"  Types: {avail}")
-            print(f"  Example: /scaffold route users")
-            print(f"  Example: /scaffold component Button")
+            print("  Example: /scaffold route users")
+            print("  Example: /scaffold component Button")
             return
 
         prompt_template = _SCAFFOLD_PROMPTS.get(scaffold_type)
@@ -436,8 +436,8 @@ class WorkspaceCommands(WorkspaceMediaMixin):
             print(f"  {DIM}Cancelled.{RESET}")
 
     def cmd_diag(self) -> None:
+        from app.core.diagnostics import default_export_filename, export
         from cli.display import GREEN, RED, RESET
-        from app.core.diagnostics import export, default_export_filename
         out_path = Path.home() / "Desktop" / default_export_filename()
         try:
             result_path = export(out_path)

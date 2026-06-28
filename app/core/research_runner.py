@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
@@ -50,7 +51,7 @@ If the chunks do not contain enough information, say so clearly — do not hallu
 class ResearchRunner:
     """Answers open-ended codebase questions using hybrid retrieval + LLM synthesis."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
         self._retriever = None   # lazy init
 
@@ -65,20 +66,8 @@ class ResearchRunner:
                 _log.info("Auto-indexing %s for research query", working_folder)
                 retriever.index_folder(working_folder)
 
-        chunks = retriever.query(question, top_k=10)
-        if not chunks:
-            return ResearchResult(
-                query=question,
-                answer="",
-                error="No indexed content found. Run /index build first.",
-            )
-
-        context = "\n\n".join(
-            f"[{c.source}]\n{c.content[:1000]}"
-            for c in chunks
-            if c.content.strip()
-        )
-        if not context:
+        context = retriever.query(question, top_k=10)
+        if not context or not context.strip():
             return ResearchResult(
                 query=question,
                 answer="",
@@ -103,18 +92,18 @@ class ResearchRunner:
                 error=f"LLM call failed: {exc}",
             )
 
-        files_used = list(dict.fromkeys(c.source for c in chunks))
+        files_used = []
         follow_ups = self._extract_follow_ups(answer)
 
         return ResearchResult(
             query=question,
             answer=answer,
             files_used=files_used,
-            chunks_used=len(chunks),
+            chunks_used=0,
             follow_ups=follow_ups,
         )
 
-    def index_folder(self, folder: str, on_progress: "Callable | None" = None) -> int:
+    def index_folder(self, folder: str, on_progress: Callable | None = None) -> int:
         """Index a folder for future queries."""
         return self._get_retriever().index_folder(folder, on_progress=on_progress)
 

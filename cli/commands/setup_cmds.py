@@ -3,15 +3,14 @@ from __future__ import annotations
 
 import logging
 import platform
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
 from app.core import process_runner
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
+from cli.display_compat import out, out_error
 
 _log = logging.getLogger("ilx_cli.setup_cmds")
 
@@ -33,7 +32,7 @@ _STAR = "*"
 class SetupCommands:
     """/setup command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_setup(self, args: list[str]) -> None:
@@ -60,7 +59,7 @@ class SetupCommands:
         ollama_ok, installed_models = self._check_ollama(ollama_url)
         if not ollama_ok:
             out(f"  {RED}{_ERR}{RESET} Ollama not running at {ollama_url}")
-            out(f"\n  To install Ollama: https://ollama.com/download")
+            out("\n  To install Ollama: https://ollama.com/download")
             out(f"  Then run: {CYAN}ollama serve{RESET}")
             out(f"  Then retry: {CYAN}/setup local{RESET}\n")
             return

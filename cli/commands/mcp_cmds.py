@@ -7,9 +7,9 @@ if TYPE_CHECKING:
     from app.core.mcp_client import MCPClient
 
 
-def cmd_mcp(mcp: "MCPClient", args: list[str]) -> None:
+def cmd_mcp(mcp: MCPClient, args: list[str]) -> None:
     """/mcp status|list|init|reload|call <tool> [json-args]|servers [connect|call]"""
-    from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
+    from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 
     sub = args[0].lower() if args else "status"
 
@@ -81,8 +81,8 @@ def cmd_mcp(mcp: "MCPClient", args: list[str]) -> None:
 
 def _cmd_mcp_servers(args: list[str]) -> None:
     """/mcp servers — manage real MCP stdio server connections."""
-    from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
     from app.core.mcp_stdio import StdioMCPManager
+    from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 
     mgr = StdioMCPManager.from_config()
     sub = args[0].lower() if args else "status"
@@ -156,8 +156,9 @@ def _cmd_mcp_servers(args: list[str]) -> None:
 
 
 def _print_mcp_servers_example() -> None:
-    from cli.display import DIM, RESET
     from pathlib import Path
+
+    from cli.display import DIM, RESET
     config_path = Path.home() / ".ilx_cli" / "mcp_servers.json"
     print(f"\n{DIM}Add MCP servers to: {config_path}")
     print('Example mcp_servers.json:')

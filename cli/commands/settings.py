@@ -2,12 +2,34 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig, ConfigManager
 
 _log = logging.getLogger("ilx_cli.settings")
+
+# Module-level TTL cache for model list queries.
+# Maps ollama_url -> (timestamp, result_tuple) so repeated /models calls
+# within 30 seconds skip the network round-trip entirely.
+_models_cache: dict[str, tuple[float, tuple[bool, list[str]]]] = {}
+_MODELS_CACHE_TTL = 30.0
+
+
+def _get_models_cached(ollama_url: str) -> tuple[bool, list[str]]:
+    """Fetch available models, using a 30-second TTL cache keyed on ollama_url."""
+    now = time.monotonic()
+    entry = _models_cache.get(ollama_url)
+    if entry is not None:
+        ts, result = entry
+        if now - ts < _MODELS_CACHE_TTL:
+            _log.debug("models cache hit for %s (age %.1fs)", ollama_url, now - ts)
+            return result
+    result = _check_ollama(ollama_url)
+    _models_cache[ollama_url] = (now, result)
+    _log.debug("models cache miss for %s — fetched fresh", ollama_url)
+    return result
 
 
 def _check_ollama(url: str) -> tuple[bool, list[str]]:
@@ -21,10 +43,80 @@ def _check_ollama(url: str) -> tuple[bool, list[str]]:
         return False, []
 
 
+def _fetch_cloud_models(cfg) -> list[str]:
+    """Return a list of available model names for the configured cloud provider.
+
+    For providers with a public models endpoint (openai, groq) the list is
+    fetched live and filtered to relevant model IDs.  Anthropic and Gemini
+    return a hardcoded current list since they have no public endpoint.
+    Falls back to a static list on any network error.
+    """
+    import httpx
+
+    from app.core import secret_store
+
+    provider = cfg.provider
+
+    if provider == "anthropic":
+        return [
+            "claude-opus-4-8",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001",
+        ]
+
+    if provider == "gemini":
+        return [
+            "gemini-2.0-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-pro-latest",
+        ]
+
+    if provider == "openai":
+        _fallback = ["gpt-4o", "gpt-4o-mini", "o3"]
+        key = secret_store.get_api_key("openai") or secret_store.get_api_key()
+        if not key:
+            return _fallback
+        try:
+            r = httpx.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=8.0,
+            )
+            r.raise_for_status()
+            import re
+            ids = [m["id"] for m in r.json().get("data", [])]
+            filtered = [i for i in ids if re.match(r"gpt-|o[0-9]", i)]
+            return sorted(filtered) if filtered else _fallback
+        except Exception:
+            return _fallback
+
+    if provider == "groq":
+        _fallback = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]
+        key = secret_store.get_api_key("groq") or secret_store.get_api_key()
+        if not key:
+            return _fallback
+        try:
+            r = httpx.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=8.0,
+            )
+            r.raise_for_status()
+            ids = [
+                m["id"] for m in r.json().get("data", [])
+                if not m.get("deprecated", False)
+            ]
+            return sorted(ids) if ids else _fallback
+        except Exception:
+            return _fallback
+
+    return []
+
+
 class SettingsCommands:
     """Handles all settings-related slash commands."""
 
-    def __init__(self, cfg: "AppConfig", mgr: "ConfigManager") -> None:
+    def __init__(self, cfg: AppConfig, mgr: ConfigManager) -> None:
         self.cfg = cfg
         self.mgr = mgr
 
@@ -32,7 +124,7 @@ class SettingsCommands:
         return _check_ollama(url or self.cfg.ollama_url)
 
     def cmd_status(self) -> None:
-        from cli.display import GREEN, RED, CYAN, DIM, BOLD, RESET, YELLOW
+        from cli.display import BOLD, CYAN, GREEN, RED, RESET
         cfg = self.cfg
         if cfg.provider == "ollama":
             ok, _ = _check_ollama(cfg.ollama_url)
@@ -52,7 +144,7 @@ class SettingsCommands:
 """)
 
     def cmd_server(self) -> None:
-        from cli.display import CYAN, DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import CYAN, DIM, GREEN, RED, RESET, YELLOW
         cfg = self.cfg
         print(f"\nCurrent Ollama server: {CYAN}{cfg.ollama_url}{RESET}")
         print(f"  {DIM}Examples:  http://localhost:11434   http://192.168.50.100:11434{RESET}")
@@ -79,14 +171,14 @@ class SettingsCommands:
                 print(f"  {YELLOW}Saved (unverified): {cfg.ollama_url}{RESET}")
 
     def cmd_model(self) -> None:
-        from cli.display import CYAN, GREEN, YELLOW, DIM, RESET
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
         cfg = self.cfg
         print(f"\nCurrent model: {CYAN}{cfg.ollama_model}{RESET}")
         val = input("New model name (blank to keep): ").strip()
         if not val:
             return
         if cfg.provider == "ollama":
-            ok, mlist = _check_ollama(cfg.ollama_url)
+            ok, mlist = _get_models_cached(cfg.ollama_url)
             if ok and mlist and val not in mlist:
                 print(f"  {YELLOW}Warning: '{val}' not in server model list.{RESET}")
                 print(f"  {DIM}Pull it with: ollama pull {val}{RESET}")
@@ -95,23 +187,34 @@ class SettingsCommands:
         print(f"{GREEN}Model set to: {cfg.ollama_model}{RESET}")
 
     def cmd_models(self) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         cfg = self.cfg
-        print(f"  {DIM}Fetching models from {cfg.ollama_url}...{RESET}", end="", flush=True)
-        ok, models = _check_ollama(cfg.ollama_url)
-        if ok and models:
-            print(f"\r{BOLD}Available models on {cfg.ollama_url}:{RESET}")
-            for m in models:
-                marker = f" {GREEN}<- active{RESET}" if m == cfg.ollama_model else ""
-                print(f"  * {m}{marker}")
-        elif ok:
-            print(f"\r  {YELLOW}Server reachable but no models found. Run: ollama pull <model>{RESET}")
-        else:
-            print(f"\r  {RED}Cannot reach {cfg.ollama_url}{RESET}")
+
+        if cfg.provider in ("ollama", "meta"):
+            print(f"  {DIM}Fetching models from {cfg.ollama_url}...{RESET}", end="", flush=True)
+            ok, models = _get_models_cached(cfg.ollama_url)
+            if ok and models:
+                print(f"\r{BOLD}Available models on {cfg.ollama_url}:{RESET}")
+                for m in models:
+                    marker = f" {GREEN}<- active{RESET}" if m == cfg.ollama_model else ""
+                    print(f"  * {m}{marker}")
+            elif ok:
+                print(f"\r  {YELLOW}Server reachable but no models found. Run: ollama pull <model>{RESET}")
+            else:
+                print(f"\r  {RED}Cannot reach {cfg.ollama_url}{RESET}")
+            return
+
+        models = _fetch_cloud_models(cfg)
+        print(f"\n{BOLD}Available models ({cfg.provider}):{RESET}")
+        for m in models:
+            marker = f" {GREEN}<- active{RESET}" if m == cfg.ollama_model else ""
+            print(f"  * {m}{marker}")
+        print()
 
     def cmd_workspace(self, on_change=None) -> None:
-        from cli.display import CYAN, GREEN, RESET
         from pathlib import Path
+
+        from cli.display import CYAN, GREEN, RESET
         cfg = self.cfg
         print(f"\nCurrent workspace: {CYAN}{cfg.working_folder}{RESET}")
         val = input("New workspace path (blank to keep): ").strip()
@@ -125,8 +228,8 @@ class SettingsCommands:
                 on_change(cfg.working_folder)
 
     def cmd_perms(self) -> None:
-        from cli.display import CYAN, GREEN, YELLOW, RESET
         from app.core.config import PermissionMode
+        from cli.display import CYAN, GREEN, RESET, YELLOW
         cfg = self.cfg
         print(f"\nCurrent permission mode: {CYAN}{cfg.permission_mode.value}{RESET}")
         print("  ask    — prompt before each file write / command")
@@ -146,7 +249,7 @@ class SettingsCommands:
             print(f"{YELLOW}Unknown mode '{val}' — keeping current.{RESET}")
 
     def cmd_numctx(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, RESET
+        from cli.display import GREEN, RESET, YELLOW
         cfg = self.cfg
         if args:
             try:
@@ -157,11 +260,11 @@ class SettingsCommands:
                 print(f"{YELLOW}Invalid number: {args[0]}{RESET}")
         else:
             print(f"  Current num_ctx: {cfg.num_ctx}")
-            print(f"  Usage: /numctx <N>  (e.g. /numctx 32768)")
+            print("  Usage: /numctx <N>  (e.g. /numctx 32768)")
 
     def cmd_provider(self, args: list[str]) -> None:
-        from cli.display import CYAN, GREEN, YELLOW, DIM, RESET
         from app.core import secret_store
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
         cfg = self.cfg
         # provider name → (needs API key, suggested default model)
         providers = {
@@ -180,7 +283,7 @@ class SettingsCommands:
                 marker = " ◀" if name == cfg.provider else ""
                 key_flag = "required" if needs_key else "no"
                 print(f"  {CYAN}{name:<12}{RESET}  {key_flag:<9}  {default_model:<30}  {desc}{marker}")
-            print(f"\n  Usage: /provider <name>  (e.g. /provider groq)")
+            print("\n  Usage: /provider <name>  (e.g. /provider groq)")
             return
 
         p = args[0].lower()
@@ -213,7 +316,7 @@ class SettingsCommands:
     # ── Generation parameter commands ─────────────────────────────────────────
 
     def cmd_temperature(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, RESET
+        from cli.display import GREEN, RESET, YELLOW
         if not args:
             print(f"  Current temperature: {self.cfg.temperature}")
             print(f"  {YELLOW}Usage: /temperature <0.0-2.0>{RESET}")
@@ -230,7 +333,7 @@ class SettingsCommands:
         print(f"  {GREEN}Temperature set to {val}{RESET}")
 
     def cmd_top_p(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, RESET
+        from cli.display import GREEN, RESET, YELLOW
         if not args:
             print(f"  Current top_p: {self.cfg.top_p}")
             print(f"  {YELLOW}Usage: /top_p <0.0-1.0>{RESET}")
@@ -247,7 +350,7 @@ class SettingsCommands:
         print(f"  {GREEN}top_p set to {val}{RESET}")
 
     def cmd_max_tokens(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, RESET
+        from cli.display import GREEN, RESET, YELLOW
         if not args:
             print(f"  Current max_tokens: {self.cfg.max_tokens}")
             print(f"  {YELLOW}Usage: /max_tokens <int, -1 for unlimited>{RESET}")
@@ -265,7 +368,7 @@ class SettingsCommands:
         print(f"  {GREEN}max_tokens set to {label}{RESET}")
 
     def cmd_params(self) -> None:
-        from cli.display import BOLD, DIM, CYAN, RESET
+        from cli.display import BOLD, CYAN, RESET
         print(f"\n{BOLD}Generation Parameters:{RESET}")
         print(f"  {CYAN}provider   {RESET}  {self.cfg.provider}")
         print(f"  {CYAN}model      {RESET}  {self.cfg.ollama_model}")
@@ -278,13 +381,13 @@ class SettingsCommands:
     # ── Tool use ──────────────────────────────────────────────────────────────
 
     def cmd_tools(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, CYAN, DIM, BOLD, RESET
         from app.core.tool_schema import BUILTIN_TOOL_DEFS
+        from cli.display import BOLD, CYAN, GREEN, RESET, YELLOW
         if not args:
             status = "ON" if self.cfg.tool_use_enabled else "OFF"
             color = GREEN if self.cfg.tool_use_enabled else YELLOW
             print(f"\n  Tool use: {color}{status}{RESET}")
-            print(f"  Usage: /tools on | /tools off | /tools list")
+            print("  Usage: /tools on | /tools off | /tools list")
             return
         sub = args[0].lower()
         if sub == "on":
@@ -305,27 +408,19 @@ class SettingsCommands:
     # ── Session cost ─────────────────────────────────────────────────────────
 
     def cmd_cost(self) -> None:
-        """Show cumulative session cost and token usage."""
-        from cli.display import BOLD, DIM, GREEN, CYAN, RESET
+        """Show cumulative session cost and token usage (per-provider breakdown)."""
         from app.core.cost_tracker import tracker
-        summary = tracker.session_summary()
-        total_usd   = summary["total_usd"]
-        prompt_tok  = summary["prompt_tokens"]
-        comp_tok    = summary["completion_tokens"]
-        total_tok   = prompt_tok + comp_tok
-        cost_str    = tracker.format_cost(total_usd)
-        print(
-            f"\n{BOLD}Session cost:{RESET} {GREEN}{cost_str}{RESET}"
-            f"  {DIM}({total_tok:,} tokens:"
-            f" {prompt_tok:,} prompt + {comp_tok:,} completion){RESET}\n"
-        )
+        from cli.display import BOLD, RESET
+        print(f"\n{BOLD}Session cost:{RESET}")
+        print(tracker.format_session_report())
+        print()
 
     # ── Rich TUI ─────────────────────────────────────────────────────────────
 
     def cmd_rich(self, args: list[str]) -> None:
         """Handle /rich on|off|status|demo."""
-        from cli.display import GREEN, YELLOW, DIM, BOLD, CYAN, RESET
         import cli.rich_display as _rd
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
         sub = args[0].lower() if args else "status"
 
@@ -399,8 +494,8 @@ class SettingsCommands:
 
     def cmd_errors(self, args: list[str]) -> None:
         """/errors [clear|stats] — display, clear, or summarise classified API errors."""
-        from cli.display import BOLD, DIM, YELLOW, GREEN, CYAN, RESET
         from app.core import crash_db
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
         sub = args[0].lower() if args else "show"
 
@@ -452,10 +547,57 @@ class SettingsCommands:
         print()
         print(f"  {DIM}Use '/errors clear' to wipe history, '/errors stats' for counts.{RESET}\n")
 
+    # ── Provider latency health check ─────────────────────────────────────────
+
+    def cmd_provider_health(self, args: list[str] | None = None) -> None:
+        """/health — test the active provider with a minimal request and report latency."""
+        import time as _time
+
+        import httpx
+
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
+        cfg = self.cfg
+        provider = cfg.provider
+        model = cfg.ollama_model or "(default)"
+        print(f"\n{BOLD}Provider health check{RESET}  {CYAN}{provider}{RESET}  model: {model}")
+
+        start = _time.monotonic()
+        status = "OK"
+        error_msg = ""
+        try:
+            if provider in ("ollama", "meta"):
+                r = httpx.get(f"{cfg.ollama_url.rstrip('/')}/api/tags", timeout=5.0)
+                r.raise_for_status()
+            else:
+                from codex.app.llm_client_ext import get_llm_client
+                client = get_llm_client(cfg)
+                client.chat([{"role": "user", "content": "Hello"}], system="")
+        except Exception as exc:
+            status = "FAIL"
+            error_msg = str(exc)[:120]
+        latency_ms = (_time.monotonic() - start) * 1000
+
+        if status == "FAIL":
+            colour = RED
+        elif latency_ms < 500:
+            colour = GREEN
+        elif latency_ms < 2000:
+            colour = YELLOW
+        else:
+            colour = RED
+
+        print(
+            f"  Status   : {colour}{status}{RESET}\n"
+            f"  Latency  : {colour}{latency_ms:.0f} ms{RESET}"
+        )
+        if error_msg:
+            print(f"  Error    : {DIM}{error_msg}{RESET}")
+        print()
+
     # ── Health check ──────────────────────────────────────────────────────────
 
     def cmd_healthcheck(self) -> None:
-        from cli.display import BOLD, GREEN, RED, YELLOW, DIM, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         print(f"\n{BOLD}ILX AI CLI Health Check{RESET}")
         results: list[tuple[str, bool, str]] = []
 

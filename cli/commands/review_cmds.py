@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 from cli.display_compat import out, out_error
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, MAGENTA, RESET
 
 _log = logging.getLogger("ilx_cli.review_cmds")
 
@@ -25,7 +25,7 @@ _RISK_COLOR = {
 class ReviewCommands:
     """/review command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_review(self, args: list[str]) -> None:
@@ -86,8 +86,8 @@ class ReviewCommands:
 
     def _review_security(self, paths: list[str]) -> None:
         """Security-focused review pass."""
-        from app.core.review_runner import ReviewRunner
         from app.core import process_runner as _pr
+        from app.core.review_runner import ReviewRunner
 
         out(f"\n{BOLD}Security review...{RESET}")
         runner = ReviewRunner(self._cfg)

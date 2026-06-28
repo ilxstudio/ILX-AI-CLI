@@ -8,9 +8,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from cli.app_helpers import AliasStore as _AliasStore, setup_readline as _setup_readline, read_input as _read_input
+from cli.app_helpers import AliasStore as _AliasStore
+from cli.app_helpers import read_input as _read_input
+from cli.app_helpers import setup_readline as _setup_readline
 from cli.command_registry import CommandRegistry
-from cli.display_compat import out, out_error, out_status
+from cli.display_compat import out_error, out_status
 
 _log = logging.getLogger("ilx_cli.app")
 
@@ -58,16 +60,12 @@ class ILXApp:
 
         from cli.commands.ssh_cmds import SSHCommands
         self._ssh = SSHCommands(self._cfg)
-
         from cli.commands.user_tools_cmds import UserToolsCommands
         self._user_tools = UserToolsCommands(self._cfg)
-
         from app.core.mcp_client import MCPClient
         self._mcp = MCPClient(cfg=self._cfg)
-
         from cli.commands.audit_cmds import AuditCommands
         self._audit = AuditCommands(self._cfg)
-
         from cli.commands.docker_cmds import DockerCommands
         self._docker = DockerCommands(self._cfg)
 
@@ -142,7 +140,7 @@ class ILXApp:
             "/errors", "/free", "/setup",
             "/plan", "/review", "/fix-tests", "/index", "/research",
             "/route", "/benchmark", "/audit", "/sandbox", "/permission",
-            "/allow", "/deny",
+            "/allow", "/deny", "/plugins",  # noqa: E501
         })
 
     def _register_commands(self) -> None:
@@ -164,6 +162,7 @@ class ILXApp:
         r.register("/allow",     lambda args: self._allowlist.cmd_allow(args) or False)
         r.register("/deny",      lambda args: self._allowlist.cmd_deny(args) or False)
         r.register("/allowlist", lambda args: self._allowlist.cmd_allowlist(args) or False)
+        r.register("/plugins", lambda a: __import__("cli.commands.plugin_cmds", fromlist=["cmd_plugins"]).cmd_plugins(a, self._cfg) or False)  # noqa: E501
 
     def _print_trust_summary(self) -> None:
         """Print a one-screen trust/config summary at startup (interactive only)."""
@@ -171,7 +170,7 @@ class ILXApp:
         if not sys.stdin.isatty():
             return
 
-        from cli.rich_display import get_output_mode, _emit_json  # noqa: WPS347
+        from cli.rich_display import _emit_json, get_output_mode  # noqa: WPS347
 
         cfg = self._cfg
         provider_str = getattr(cfg, "provider", "ollama")
@@ -218,8 +217,8 @@ class ILXApp:
         print(f"  Audit     : enabled{RESET}")
 
     def _print_startup(self) -> None:
-        from cli.display import BANNER, GREEN, RED, YELLOW, DIM, RESET, print_banner
         from app.core.spinner import Spinner
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW, print_banner
         print_banner()
 
         if self._cfg.provider == "ollama":
@@ -300,7 +299,7 @@ class ILXApp:
 
     def _dispatch_command(self, raw: str) -> bool:
         """Handle a slash command. Returns True if the app should exit."""
-        from cli.display import DIM, GREEN, YELLOW, RESET, print_help
+        from cli.display import DIM, GREEN, RESET, YELLOW, print_help
 
         # ── Alias expansion ──────────────────────────────────────────────────
         parts = raw.split()
@@ -439,7 +438,7 @@ class ILXApp:
         elif cmd == "/rich":
             self._settings.cmd_rich(args)
         elif cmd == "/no-color":
-            from cli.rich_display import set_rich_enabled, set_output_mode
+            from cli.rich_display import set_output_mode, set_rich_enabled
             set_rich_enabled(False)
             set_output_mode("ansi")
             print("Color output disabled.")
@@ -544,7 +543,7 @@ class ILXApp:
             if not args or args[0].lower() == "list":
                 TemplateListCommand().cmd_template_list()
             else:
-                from cli.display import YELLOW, RESET
+                from cli.display import RESET, YELLOW
                 print(f"{YELLOW}Usage: /template list{RESET}")
         elif cmd == "/upgrade":
             from cli.commands.workspace_upgrade import UpgradeCommand
@@ -585,7 +584,7 @@ class ILXApp:
                 from cli.display import DIM, RESET
                 print(f"  {DIM}Context cleared: history, pinned files, and RAG index reset.{RESET}")
             else:
-                from cli.display import YELLOW, RESET
+                from cli.display import RESET, YELLOW
                 print(
                     f"  {YELLOW}Usage: /context [show|stats]  |  /context clear{RESET}"
                 )
@@ -664,7 +663,7 @@ class ILXApp:
 
     def _permission(self, kind: str, target: str, detail: str) -> bool:
         """Shared permission callback — prompts the user and returns bool."""
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
         label = Path(target).name if target else kind
         try:
             ans = input(
@@ -675,8 +674,9 @@ class ILXApp:
         return ans in ("y", "yes")
 
     def _do_session_search(self, query: str) -> None:
-        from cli.display import BOLD, DIM, CYAN, YELLOW, RESET
         import json
+
+        from cli.display import BOLD, CYAN, DIM, RESET, YELLOW
         sessions = self._sessions.list(50)
         hits: list[tuple] = []
         for path in sessions:

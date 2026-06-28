@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error, out_status
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
+from cli.display_compat import out, out_error
 
 _log = logging.getLogger("ilx_cli.bench_cmds")
 
@@ -36,7 +36,7 @@ def _task_score_bar(score: int, max_score: int = 10, width: int = 10) -> str:
 class BenchCommands:
     """/benchmark command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_benchmark(self, args: list[str]) -> None:
@@ -71,7 +71,7 @@ class BenchCommands:
             out_error(f"\n  {RED}Benchmark failed: {exc}{RESET}\n")
             return
 
-        out()  # clear progress line
+        out("")  # clear progress line
         out(f"\n{BOLD}Results — {model}{RESET}")
         out(f"  {'─' * 50}")
 

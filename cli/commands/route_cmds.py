@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error, out_status, out_result
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET
+from cli.display_compat import out, out_error
 
 _log = logging.getLogger("ilx_cli.route_cmds")
 
@@ -23,7 +23,7 @@ STRATEGY_DESCRIPTIONS = {
 class RouteCommands:
     """/route command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_route(self, args: list[str]) -> None:
@@ -45,12 +45,12 @@ class RouteCommands:
     # ── subcommands ───────────────────────────────────────────────────────
 
     def _route_status(self, _args: list[str]) -> None:
-        from app.core.router import ModelRouter, STRATEGIES
+        from app.core.router import STRATEGIES
         strategy = getattr(self._cfg, "route_strategy", "auto")
         out(f"\n{BOLD}Model Routing Status{RESET}")
         out(f"  Current strategy:  {CYAN}{strategy}{RESET}")
         out(f"  Description:       {DIM}{STRATEGY_DESCRIPTIONS.get(strategy, '')}{RESET}")
-        out(f"\n  Available strategies:")
+        out("\n  Available strategies:")
         for s in STRATEGIES:
             marker = f"  {GREEN}▶{RESET}" if s == strategy else "   "
             out(f"{marker} {CYAN}{s:<14}{RESET} {DIM}{STRATEGY_DESCRIPTIONS[s]}{RESET}")
@@ -65,8 +65,8 @@ class RouteCommands:
         out("")
 
     def _set_strategy(self, strategy: str) -> None:
-        from app.core.router import STRATEGIES
         from app.core.config import ConfigManager
+        from app.core.router import STRATEGIES
         if strategy not in STRATEGIES:
             out_error(f"{RED}Unknown strategy '{strategy}'. Valid: {', '.join(STRATEGIES)}{RESET}")
             return

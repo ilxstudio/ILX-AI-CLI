@@ -18,14 +18,14 @@ _SKIP_DIRS = {
 class DevToolsExtraCommands:
     """Handles /watch, /profile, and /attach commands."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     def _wf(self) -> str | None:
         return self.cfg.working_folder or None
 
     def _require_workspace(self) -> str | None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
         wf = self._wf()
         if not wf:
             print(f"{YELLOW}No workspace set. Use /workspace first.{RESET}")
@@ -34,8 +34,9 @@ class DevToolsExtraCommands:
     # ── /watch ────────────────────────────────────────────────────────────────
 
     def cmd_watch(self, args: list[str]) -> None:
-        from cli.display import CYAN, DIM, GREEN, RED, YELLOW, RESET
         import time
+
+        from cli.display import CYAN, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -91,9 +92,10 @@ class DevToolsExtraCommands:
     # ── /profile ──────────────────────────────────────────────────────────────
 
     def cmd_profile(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, RED, RESET
         import io
         import pstats
+
+        from cli.display import BOLD, DIM, RED, RESET
         wf = self._require_workspace()
         if not wf:
             return
@@ -130,9 +132,10 @@ class DevToolsExtraCommands:
 
     def cmd_attach(self, args: list[str]) -> None:
         """Tail live output of a running background task. Press Ctrl+C to detach."""
-        from cli.display import BOLD, DIM, CYAN, YELLOW, RED, GREEN, RESET
-        from app.core.supervisor import supervisor, TaskStatus
         import time as _time
+
+        from app.core.supervisor import TaskStatus, supervisor
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         if not args:
             running = supervisor.running_tasks()
             if not running:

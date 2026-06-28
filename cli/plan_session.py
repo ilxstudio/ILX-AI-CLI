@@ -1,9 +1,10 @@
 """Plan-then-act mode -- inspect repo, propose plan, execute on approval."""
 from __future__ import annotations
 
+import datetime
 import json
 import logging
-import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,8 +13,8 @@ if TYPE_CHECKING:
     from app.core.config import AppConfig
     from cli.context import ContextManager
 
-from cli.display_compat import out, out_error, out_status
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
+from cli.display_compat import out, out_error
 
 _log = logging.getLogger("ilx_cli.plan_session")
 
@@ -60,12 +61,13 @@ class Plan:
     tests:   list[str] = field(default_factory=list)
     raw:     str = ""
     saved_at: str = ""
+    plan_id:  str = ""
 
 
 class PlanSession:
     """Manages the /plan workflow: generate, review, approve, execute."""
 
-    def __init__(self, cfg: "AppConfig", ctx: "ContextManager") -> None:
+    def __init__(self, cfg: AppConfig, ctx: ContextManager) -> None:
         self._cfg = cfg
         self._ctx = ctx
         self._current: Plan | None = None
@@ -84,6 +86,10 @@ class PlanSession:
             self._plan_cancel()
         elif sub == "status":
             self._plan_status()
+        elif sub == "list":
+            self._plan_list()
+        elif sub == "resume":
+            self._plan_resume(args[1:], chat_history)
         else:
             # Everything else is a task description
             task = " ".join(args)
@@ -144,12 +150,17 @@ class PlanSession:
         out(f"\n{BOLD}Executing plan: {plan.task}{RESET}\n")
 
         for step in plan.steps:
+            if step.done:
+                out(f"  {DIM}[{step.number}] (already done) {step.description}{RESET}")
+                continue
             out(f"  {CYAN}[{step.number}]{RESET} {step.description}")
             self._execute_step(step, chat_history)
             step.done = True
+            self._update_plan_checkpoint(plan)
             out(f"      {GREEN}[done]{RESET}")
             out("")
 
+        self._mark_plan_complete(plan)
         out(f"\n{GREEN}Plan complete!{RESET}")
         if plan.tests:
             out(f"\n{BOLD}Suggested tests:{RESET}")
@@ -177,12 +188,80 @@ class PlanSession:
             out(f"  {marker} {step.number}. {step.description}")
         out("")
 
+    def _plan_list(self) -> None:
+        """List all saved plans from disk."""
+        _PLANS_DIR.mkdir(parents=True, exist_ok=True)
+        files = sorted(_PLANS_DIR.glob("plan_*.json"), reverse=True)
+        if not files:
+            out(f"\n  {DIM}No saved plans found.{RESET}\n")
+            return
+        out(f"\n{BOLD}Saved plans:{RESET}")
+        for f in files[:20]:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                pid = data.get("id", f.stem)
+                task = data.get("task", "")[:60]
+                status = data.get("status", "unknown")
+                completed = len(data.get("completed_steps", []))
+                total = len(data.get("steps", []))
+                color = GREEN if status == "complete" else YELLOW
+                out(f"  {color}{pid}{RESET}  {DIM}[{completed}/{total}]{RESET}  {task}")
+            except Exception:
+                out(f"  {DIM}{f.name}{RESET}")
+        out("")
+
+    def _plan_resume(self, args: list[str], chat_history: list[dict]) -> None:
+        """Resume a saved plan by ID."""
+        if not args:
+            out(f"  {YELLOW}Usage: /plan resume <id>{RESET}\n")
+            return
+        plan_id = args[0]
+        _PLANS_DIR.mkdir(parents=True, exist_ok=True)
+        matches = list(_PLANS_DIR.glob(f"plan_{plan_id}*.json"))
+        # Also try exact match
+        if not matches:
+            matches = [p for p in _PLANS_DIR.glob("plan_*.json")
+                       if json.loads(p.read_text(encoding="utf-8")).get("id", "") == plan_id]
+        if not matches:
+            out_error(f"  {RED}No plan found with id '{plan_id}'.{RESET}\n")
+            return
+        f = matches[0]
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception as exc:
+            out_error(f"  {RED}Could not load plan: {exc}{RESET}\n")
+            return
+        completed_nums = set(data.get("completed_steps", []))
+        plan = Plan(
+            task=data.get("task", ""),
+            risks=data.get("risks", []),
+            tests=data.get("tests", []),
+            plan_id=data.get("id", f.stem),
+            saved_at=str(f),
+        )
+        for s in data.get("steps", []):
+            n = s.get("n", 0)
+            plan.steps.append(PlanStep(
+                number=n,
+                description=s.get("desc", ""),
+                done=(n in completed_nums),
+            ))
+        self._current = plan
+        pending = [s for s in plan.steps if not s.done]
+        out(f"\n{BOLD}Resuming plan: {plan.task}{RESET}")
+        out(f"  {DIM}Completed: {len(completed_nums)}/{len(plan.steps)} steps{RESET}")
+        if pending:
+            out(f"  Next: {CYAN}{pending[0].description}{RESET}")
+        out(f"\n  Run {CYAN}/plan approve{RESET} to continue execution.\n")
+
     def _plan_help(self) -> None:
         out(f"\n{BOLD}/plan{RESET} -- inspect repo and propose a structured implementation plan")
-        out(f"  {CYAN}/plan <task>{RESET}       Generate a plan for the given task")
-        out(f"  {CYAN}/plan approve{RESET}      Execute the approved plan step by step")
-        out(f"  {CYAN}/plan cancel{RESET}       Discard the current plan")
-        out(f"  {CYAN}/plan status{RESET}       Show current plan and step completion\n")
+        out(f"  {CYAN}/plan <task>{RESET}           Generate a plan for the given task")
+        out(f"  {CYAN}/plan approve{RESET}          Execute the approved plan step by step")
+        out(f"  {CYAN}/plan cancel{RESET}           Discard the current plan")
+        out(f"  {CYAN}/plan status{RESET}           Show current plan and step completion")
+        out(f"  {CYAN}/plan list{RESET}             List all saved plans")
+        out(f"  {CYAN}/plan resume <id>{RESET}      Resume a saved plan from last checkpoint\n")
 
     # ── helpers ───────────────────────────────────────────────────────────
 
@@ -270,14 +349,48 @@ class PlanSession:
     def _save_plan(self, plan: Plan) -> None:
         try:
             _PLANS_DIR.mkdir(parents=True, exist_ok=True)
-            ts = int(time.time())
-            p = _PLANS_DIR / f"plan_{ts}.json"
+            plan_id = uuid.uuid4().hex[:8]
+            plan.plan_id = plan_id
+            p = _PLANS_DIR / f"plan_{plan_id}.json"
             p.write_text(json.dumps({
+                "id": plan_id,
                 "task": plan.task,
                 "steps": [{"n": s.number, "desc": s.description} for s in plan.steps],
+                "completed_steps": [],
                 "risks": plan.risks,
                 "tests": plan.tests,
+                "created_at": datetime.datetime.utcnow().isoformat(),
+                "status": "in_progress",
             }, indent=2), encoding="utf-8")
             plan.saved_at = str(p)
         except Exception as exc:
             _log.debug("Could not save plan: %s", exc)
+
+    def _update_plan_checkpoint(self, plan: Plan) -> None:
+        """Persist completed step numbers to disk after each step."""
+        if not plan.saved_at:
+            return
+        try:
+            p = Path(plan.saved_at)
+            if not p.exists():
+                return
+            data = json.loads(p.read_text(encoding="utf-8"))
+            data["completed_steps"] = [s.number for s in plan.steps if s.done]
+            p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:
+            _log.debug("Could not update plan checkpoint: %s", exc)
+
+    def _mark_plan_complete(self, plan: Plan) -> None:
+        """Mark the plan file as complete on disk."""
+        if not plan.saved_at:
+            return
+        try:
+            p = Path(plan.saved_at)
+            if not p.exists():
+                return
+            data = json.loads(p.read_text(encoding="utf-8"))
+            data["completed_steps"] = [s.number for s in plan.steps]
+            data["status"] = "complete"
+            p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:
+            _log.debug("Could not mark plan complete: %s", exc)

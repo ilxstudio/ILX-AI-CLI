@@ -3,15 +3,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error, out_status
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
+from cli.display import BOLD, CYAN, DIM, GREEN, RESET
+from cli.display_compat import out
 
 _log = logging.getLogger("ilx_cli.trust_cmds")
 
@@ -24,7 +23,7 @@ _NO  = "[no]"
 class TrustCommands:
     """/free command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_free(self, args: list[str]) -> None:

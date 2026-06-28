@@ -5,21 +5,26 @@ Do not import this module directly — use CodingAgent.run_streaming() instead.
 """
 from __future__ import annotations
 
+import logging
+import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
-from .paths import AppPaths
-from .workspace import WorkspaceManager
-from .runner import CommandRunner, RunResult
-from .logger import AgentLogger, generate_run_id
-from .llm_client import _CODEX_SYSTEM
-from .response_parser import ResponseParser, ParseError
-from .validator import ResponseValidator, ValidationError
+_log = logging.getLogger("ilx_cli.streaming")
+
 from .chunker import ProjectChunker
-from .memory import AgentMemory, AttemptRecord
-from .prompt_builder import PromptBuilder
 from .controller import AgentResult, _classify_exit_code
+from .llm_client import _CODEX_SYSTEM
+from .logger import AgentLogger, generate_run_id
+from .memory import AgentMemory, AttemptRecord
+from .paths import AppPaths
+from .prompt_builder import PromptBuilder
+from .response_parser import ParseError, ResponseParser
+from .runner import CommandRunner, RunResult
+from .validator import ResponseValidator, ValidationError
+from .workspace import WorkspaceManager
 
 if TYPE_CHECKING:
     from .controller import CodingAgent
@@ -31,7 +36,7 @@ except ImportError:
 
 
 def run_streaming_impl(
-    agent: "CodingAgent",
+    agent: CodingAgent,
     task: str,
     working_folder: str,
     on_chunk: Callable[[str], None] | None,
@@ -231,7 +236,7 @@ def run_streaming_impl(
 # ── Private helpers ───────────────────────────────────────────────────────────
 
 def _call_llm_streaming(
-    agent: "CodingAgent",
+    agent: CodingAgent,
     prompt: str,
     attempt: int,
     on_chunk: Callable[[str], None] | None,
@@ -242,16 +247,32 @@ def _call_llm_streaming(
     if hasattr(agent.llm_client, "chat_stream"):
         emit_tool("chat_stream", {"attempt": attempt})
         chunks: list[str] = []
+        t0 = time.monotonic()
+        t_first: float | None = None
+        token_count = 0
         for chunk in agent.llm_client.chat_stream(messages, system=_CODEX_SYSTEM):
+            if t_first is None:
+                t_first = time.monotonic()
             chunks.append(chunk)
+            token_count += 1
             if on_chunk is not None:
                 try:
                     on_chunk(chunk)
                 except Exception:
                     pass
+        t_end = time.monotonic()
+        ttft_ms  = (t_first - t0) * 1000 if t_first is not None else 0.0
+        total_ms = (t_end - t0) * 1000
+        _log.debug(
+            "stream: ttft=%.0fms total=%.0fms tokens=%d",
+            ttft_ms, total_ms, token_count,
+        )
         return "".join(chunks)
     # Fallback: non-streaming generate
+    t0 = time.monotonic()
     raw = agent.llm_client.generate(prompt)
+    total_ms = (time.monotonic() - t0) * 1000
+    _log.debug("stream: ttft=%.0fms total=%.0fms tokens=1", total_ms, total_ms)
     if on_chunk is not None:
         try:
             on_chunk(raw)
@@ -261,7 +282,7 @@ def _call_llm_streaming(
 
 
 def _apply_file_action(
-    agent: "CodingAgent",
+    agent: CodingAgent,
     fa,
     paths,
     workspace,
@@ -308,7 +329,7 @@ def _apply_file_action(
 
 
 def _handle_command(
-    agent: "CodingAgent",
+    agent: CodingAgent,
     command: str,
     paths,
     runner,

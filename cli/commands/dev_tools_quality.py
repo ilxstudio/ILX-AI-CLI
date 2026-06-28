@@ -20,7 +20,7 @@ class DevToolsQualityMixin:
 
     def cmd_complexity(self, args: list[str]) -> None:
         """Run radon cc to show cyclomatic complexity of high-complexity functions."""
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()  # type: ignore[attr-defined]
         if not wf:
             return
@@ -63,7 +63,7 @@ class DevToolsQualityMixin:
 
     def cmd_deadcode(self, args: list[str]) -> None:
         """Run vulture to detect unused code."""
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()  # type: ignore[attr-defined]
         if not wf:
             return
@@ -99,7 +99,7 @@ class DevToolsQualityMixin:
 
     def cmd_bandit(self, args: list[str]) -> None:
         """Run bandit security linter."""
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()  # type: ignore[attr-defined]
         if not wf:
             return
@@ -140,8 +140,9 @@ class DevToolsQualityMixin:
 
     def cmd_precommit(self, args: list[str]) -> None:
         """Generate .pre-commit-config.yaml and install hooks."""
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
         from pathlib import Path
+
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()  # type: ignore[attr-defined]
         if not wf:
             return

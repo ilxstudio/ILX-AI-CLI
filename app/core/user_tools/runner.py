@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys as _sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
-
-import sys as _sys
 
 PYTHON_EXE = _sys.executable
 
@@ -37,7 +36,7 @@ class ToolRunner:
     def run_sync(
         self,
         path: str | Path,
-        args: Optional[list[str]] = None,
+        args: list[str] | None = None,
         timeout: int = 60,
     ) -> dict:
         """Run *path* synchronously and return a result dict.
@@ -91,9 +90,9 @@ class ToolRunner:
     def run_async(
         self,
         path: str | Path,
-        args: Optional[list[str]] = None,
-        on_output: Optional[Callable[[str], None]] = None,
-        on_done: Optional[Callable[[dict], None]] = None,
+        args: list[str] | None = None,
+        on_output: Callable[[str], None] | None = None,
+        on_done: Callable[[dict], None] | None = None,
         timeout: int = 300,
     ) -> threading.Thread:
         """Run *path* in a background daemon thread.
@@ -122,8 +121,8 @@ class ToolRunner:
         self,
         path: Path,
         args: list[str],
-        on_output: Optional[Callable[[str], None]],
-        on_done: Optional[Callable[[dict], None]],
+        on_output: Callable[[str], None] | None,
+        on_done: Callable[[dict], None] | None,
         timeout: int,
     ) -> None:
         """Internal: spawn subprocess, stream output line-by-line, call callbacks."""

@@ -1,14 +1,15 @@
 from __future__ import annotations
+
 import os
 import queue as _queue
 import shlex
 import shutil
 import subprocess
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
-from typing import Callable
 
 MAX_OUTPUT = 10_000
 _SENTINEL  = object()

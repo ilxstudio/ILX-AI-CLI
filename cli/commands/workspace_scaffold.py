@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -452,13 +451,13 @@ SCAFFOLD_TYPE_DESCRIPTIONS: dict[str, str] = {
 class ScaffoldExtensions:
     """Handles /scaffold env, /scaffold pre-commit, /scaffold compose."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     # ── /scaffold env ──────────────────────────────────────────────────────
 
     def cmd_scaffold_env(self) -> None:
-        from cli.display import DIM, GREEN, YELLOW, CYAN, RESET
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
 
         wf = self.cfg.working_folder
         if not wf:
@@ -532,7 +531,7 @@ class ScaffoldExtensions:
     # ── /scaffold pre-commit ───────────────────────────────────────────────
 
     def cmd_scaffold_precommit(self) -> None:
-        from cli.display import DIM, GREEN, YELLOW, RESET
+        from cli.display import DIM, GREEN, RESET, YELLOW
         wf = self.cfg.working_folder
         if not wf:
             print(f"{YELLOW}No workspace set. Use /workspace first.{RESET}")
@@ -548,7 +547,7 @@ class ScaffoldExtensions:
     # ── /scaffold compose ──────────────────────────────────────────────────
 
     def cmd_scaffold_compose(self) -> None:
-        from cli.display import DIM, GREEN, YELLOW, RESET
+        from cli.display import DIM, GREEN, RESET, YELLOW
         wf = self.cfg.working_folder
         if not wf:
             print(f"{YELLOW}No workspace set. Use /workspace first.{RESET}")

@@ -167,7 +167,7 @@ class ToolValidator:
                 )
                 smoke_ok = True  # treat as pass when the flag isn't expected
             else:
-                errors.append(f"[smoke] Tool exited with non-zero code during health check")
+                errors.append("[smoke] Tool exited with non-zero code during health check")
 
         overall_ok = syntax_ok and import_ok and smoke_ok and not errors
         return ValidationResult(
@@ -251,6 +251,7 @@ class ToolValidator:
                 encoding="utf-8",
                 errors="replace",
                 timeout=timeout,
+                env=_safe_env(),
             )
             ok = r.returncode in (0, 2)
             return ok, r.stdout[:300], r.stderr[:300]

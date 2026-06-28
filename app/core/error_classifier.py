@@ -168,7 +168,7 @@ def classify_error(exc: Exception, provider: str = "") -> ClassifiedError:
                         f"{label} rejected the request because the context is too long (HTTP 400). "
                         "Reduce the number of messages or file content."
                     ),
-                    should_retry=True,
+                    should_retry=False,
                     retry_after=0,
                     suggestion="Run /compact to reduce context size.",
                 )
@@ -197,6 +197,21 @@ def classify_error(exc: Exception, provider: str = "") -> ClassifiedError:
                 should_retry=False,
                 retry_after=0,
                 suggestion="Run /model to switch to an available model.",
+            )
+
+        # 5xx — server-side transient errors, retry with backoff
+        if 500 <= code < 600:
+            retry_after = 30 if code == 529 else 10
+            return ClassifiedError(
+                original=exc,
+                error_class=ErrorClass.TRANSIENT,
+                message=f"{label} server error (HTTP {code}) — retrying.",
+                should_retry=True,
+                retry_after=retry_after,
+                suggestion=(
+                    "The provider is experiencing a transient server-side error. "
+                    "The request will be retried automatically."
+                ),
             )
 
         # All other HTTP errors — permanent

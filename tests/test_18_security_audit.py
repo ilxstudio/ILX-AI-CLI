@@ -71,6 +71,7 @@ class _ShellTrueScanner(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+@pytest.mark.security
 def test_no_shell_true_in_subprocess():
     """No production source file (app/, cli/, codex/) may use shell=True in subprocess."""
     search_dirs = [_ROOT / "app", _ROOT / "cli", _ROOT / "codex"]
@@ -102,6 +103,7 @@ def test_no_shell_true_in_subprocess():
 # 2. Path traversal blocked by safe_resolve()
 # ---------------------------------------------------------------------------
 
+@pytest.mark.security
 def test_path_traversal_blocked(tmp_path):
     """safe_resolve() with '../../../etc/passwd' must return None."""
     from app.utils.file_utils import safe_resolve
@@ -112,6 +114,7 @@ def test_path_traversal_blocked(tmp_path):
     )
 
 
+@pytest.mark.security
 def test_path_traversal_blocked_dotdot_only(tmp_path):
     """safe_resolve() with plain '..' must also be blocked."""
     from app.utils.file_utils import safe_resolve
@@ -122,6 +125,7 @@ def test_path_traversal_blocked_dotdot_only(tmp_path):
     )
 
 
+@pytest.mark.security
 def test_safe_resolve_valid_path_passes(tmp_path):
     """safe_resolve() with a valid relative path inside the sandbox returns a string."""
     from app.utils.file_utils import safe_resolve
@@ -135,6 +139,7 @@ def test_safe_resolve_valid_path_passes(tmp_path):
 # 3. SSRF blocks localhost
 # ---------------------------------------------------------------------------
 
+@pytest.mark.security
 def test_ssrf_blocks_localhost():
     """fetch_url('http://127.0.0.1/admin') must return an error, not content."""
     from app.core.web_fetch import fetch_url
@@ -146,6 +151,7 @@ def test_ssrf_blocks_localhost():
     assert not result["text"], "Must not return page content for blocked addresses"
 
 
+@pytest.mark.security
 def test_ssrf_blocks_localhost_name():
     """fetch_url('http://localhost/') must return an error."""
     from app.core.web_fetch import fetch_url
@@ -158,6 +164,7 @@ def test_ssrf_blocks_localhost_name():
 # 4. SSRF blocks private IP
 # ---------------------------------------------------------------------------
 
+@pytest.mark.security
 def test_ssrf_blocks_private_ip():
     """fetch_url('http://192.168.1.1/') must return an error."""
     from app.core.web_fetch import fetch_url
@@ -166,6 +173,7 @@ def test_ssrf_blocks_private_ip():
     assert not result["ok"], "fetch_url must block 192.168.x.x private range"
     assert result["error"]
 
+@pytest.mark.security
 def test_ssrf_blocks_private_10():
     """fetch_url('http://10.0.0.1/') must return an error."""
     from app.core.web_fetch import fetch_url
@@ -178,6 +186,7 @@ def test_ssrf_blocks_private_10():
 # 5. SSRF blocks metadata endpoint
 # ---------------------------------------------------------------------------
 
+@pytest.mark.security
 def test_ssrf_blocks_metadata_endpoint():
     """fetch_url('http://169.254.169.254/') must be blocked (cloud metadata service)."""
     from app.core.web_fetch import fetch_url
@@ -190,6 +199,7 @@ def test_ssrf_blocks_metadata_endpoint():
     assert not result["text"], "Must return no page text for blocked address"
 
 
+@pytest.mark.security
 def test_ssrf_blocks_metadata_via_check_ssrf():
     """_check_ssrf() directly returns an error message for 169.254.x.x IPs."""
     from app.core.web_fetch import _check_ssrf
@@ -211,6 +221,7 @@ def test_ssrf_blocks_metadata_via_check_ssrf():
 # 6. Secret redaction in audit log
 # ---------------------------------------------------------------------------
 
+@pytest.mark.security
 def test_secret_redaction_in_audit(tmp_path):
     """log_event() must never write a raw API key to the audit log file."""
     import app.core.audit as audit
@@ -243,6 +254,7 @@ def test_secret_redaction_in_audit(tmp_path):
     assert record.get("prompt_tokens") == 10
 
 
+@pytest.mark.security
 def test_secret_redaction_password_field(tmp_path):
     """log_event() must redact 'password' fields."""
     import app.core.audit as audit
@@ -258,6 +270,7 @@ def test_secret_redaction_password_field(tmp_path):
     assert record.get("username") == "alice"  # non-secret should pass through
 
 
+@pytest.mark.security
 def test_secret_redaction_token_field(tmp_path):
     """log_event() must redact 'access_token' fields."""
     import app.core.audit as audit
@@ -275,6 +288,7 @@ def test_secret_redaction_token_field(tmp_path):
 # 7. User tool runs in subprocess, not imported in-process
 # ---------------------------------------------------------------------------
 
+@pytest.mark.security
 def test_user_tool_runs_in_subprocess(tmp_path):
     """ToolRunner.run_sync() must invoke subprocess.run, never importlib."""
     from app.core.user_tools.runner import ToolRunner
@@ -300,6 +314,7 @@ def test_user_tool_runs_in_subprocess(tmp_path):
     assert "exit_code" in result
 
 
+@pytest.mark.security
 def test_user_tool_subprocess_not_importlib(tmp_path):
     """ToolRunner must not call importlib.import_module to load user tools."""
     from app.core.user_tools.runner import ToolRunner
@@ -327,6 +342,7 @@ def test_user_tool_subprocess_not_importlib(tmp_path):
 # 8. URL scheme validation
 # ---------------------------------------------------------------------------
 
+@pytest.mark.security
 def test_url_scheme_validation_ftp():
     """fetch_url('ftp://example.com') must return a scheme-rejection error."""
     from app.core.web_fetch import fetch_url
@@ -338,6 +354,7 @@ def test_url_scheme_validation_ftp():
     )
 
 
+@pytest.mark.security
 def test_url_scheme_validation_file():
     """fetch_url('file:///etc/passwd') must be rejected."""
     from app.core.web_fetch import fetch_url
@@ -346,6 +363,7 @@ def test_url_scheme_validation_file():
     assert not result["ok"], "file:// must be rejected"
 
 
+@pytest.mark.security
 def test_url_scheme_validation_javascript():
     """fetch_url('javascript:alert(1)') must be rejected."""
     from app.core.web_fetch import fetch_url
@@ -354,6 +372,7 @@ def test_url_scheme_validation_javascript():
     assert not result["ok"], "javascript: scheme must be rejected"
 
 
+@pytest.mark.security
 def test_url_scheme_validation_data():
     """fetch_url('data:text/html,...') must be rejected."""
     from app.core.web_fetch import fetch_url
@@ -390,6 +409,7 @@ def test_ssh_host_validation_valid_host():
     assert err == ""
 
 
+@pytest.mark.security
 def test_ssh_host_validation_injection_blocked():
     """_validate_ssh_target rejects a host string that is an SSH option injection."""
     from app.core.ssh_client import _validate_ssh_target
@@ -400,6 +420,7 @@ def test_ssh_host_validation_injection_blocked():
     assert err, "Should return a non-empty error message"
 
 
+@pytest.mark.security
 def test_ssh_host_validation_semicolon_blocked():
     """Shell metacharacter ';' in hostname must be rejected."""
     from app.core.ssh_client import _validate_ssh_target
@@ -408,6 +429,7 @@ def test_ssh_host_validation_semicolon_blocked():
     assert not ok, "Hostname with semicolon must be rejected"
 
 
+@pytest.mark.security
 def test_ssh_user_validation_injection_blocked():
     """Shell metacharacter in username must be rejected."""
     from app.core.ssh_client import _validate_ssh_target
@@ -416,6 +438,7 @@ def test_ssh_user_validation_injection_blocked():
     assert not ok, "Username with shell metacharacter must be rejected"
 
 
+@pytest.mark.security
 def test_ssh_connect_does_not_exec_for_bad_host():
     """SSHClient.connect() with a malicious host must fail validation before
     making any subprocess or network call."""

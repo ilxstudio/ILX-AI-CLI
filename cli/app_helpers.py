@@ -37,9 +37,38 @@ def setup_readline(commands: list[str]) -> None:
     import atexit
     atexit.register(lambda: _save_history(readline, history_file))
 
-    # Tab completion for slash commands
+    # Argument completion maps: command -> list of valid first arguments
+    _ARG_COMPLETIONS: dict[str, list[str]] = {
+        "/provider": ["ollama", "anthropic", "openai", "groq", "gemini"],
+        "/perms":    ["ask", "auto", "deny"],
+        "/route":    ["auto", "free-only", "local-only", "quality"],
+    }
+
     def _completer(text: str, state: int) -> str | None:
-        options = [c for c in commands if c.startswith(text)]
+        # Attempt to detect whether we are completing a command argument.
+        try:
+            line_buf = readline.get_line_buffer()
+        except AttributeError:
+            line_buf = text
+        parts = line_buf.split()
+        if len(parts) >= 1 and (len(parts) > 1 or line_buf.endswith(" ")):
+            # We are past the first word — complete arguments.
+            cmd_key = parts[0].lower()
+            arg_choices = _ARG_COMPLETIONS.get(cmd_key, [])
+            if arg_choices:
+                partial = parts[-1] if len(parts) > 1 else ""
+                matches = [a for a in arg_choices if a.startswith(partial)]
+                return matches[state] if state < len(matches) else None
+
+        # Command completion: prefix matches first, then substring matches.
+        prefix_matches  = [c for c in commands if c.startswith(text)]
+        substr_matches  = [
+            c for c in commands
+            if text and text not in c[:len(text)]  # exclude exact prefix (already covered)
+            and text.lower() in c.lower()
+            and c not in prefix_matches
+        ]
+        options = prefix_matches + substr_matches
         return options[state] if state < len(options) else None
 
     readline.set_completer(_completer)

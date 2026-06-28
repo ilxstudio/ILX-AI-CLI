@@ -19,14 +19,14 @@ _SKIP_DIRS = {
 }
 
 
-from cli.commands.dev_tools_quality import DevToolsQualityMixin
 from cli.commands.dev_tools_extra import DevToolsExtraCommands
+from cli.commands.dev_tools_quality import DevToolsQualityMixin
 
 
 class DevToolsCommands(DevToolsQualityMixin):
     """Handles all developer-tool slash commands."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
         self._extra = DevToolsExtraCommands(cfg)
 
@@ -34,7 +34,7 @@ class DevToolsCommands(DevToolsQualityMixin):
         return self.cfg.working_folder or None
 
     def _require_workspace(self) -> str | None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
         wf = self._wf()
         if not wf:
             print(f"{YELLOW}No workspace set. Use /workspace first.{RESET}")
@@ -54,8 +54,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /run ─────────────────────────────────────────────────────────────────
 
     def cmd_run(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
         from app.core.supervisor import supervisor
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -82,8 +82,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /kill ─────────────────────────────────────────────────────────────────
 
     def cmd_kill(self, args: list[str] | None = None) -> None:
-        from cli.display import GREEN, YELLOW, RESET
         from app.core.supervisor import supervisor
+        from cli.display import GREEN, RESET, YELLOW
         task_id = args[0].upper() if args else None
         ok = supervisor.kill(task_id)
         if ok:
@@ -95,8 +95,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /test ─────────────────────────────────────────────────────────────────
 
     def cmd_test(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, BOLD, YELLOW, RESET
         from app.core import process_runner
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -143,8 +143,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /lint ─────────────────────────────────────────────────────────────────
 
     def cmd_lint(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, BOLD, RESET
         from app.core import process_runner
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -191,8 +191,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /format ───────────────────────────────────────────────────────────────
 
     def cmd_format(self) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
         from app.core import process_runner
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -221,8 +221,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /build ────────────────────────────────────────────────────────────────
 
     def cmd_build(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
         from app.core import build_helper
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -262,8 +262,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /deps ─────────────────────────────────────────────────────────────────
 
     def cmd_deps(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
         from app.core import process_runner
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
         wf = self._wf()
         pip = shutil.which("pip") or shutil.which("pip3")
         if not pip:
@@ -307,7 +307,7 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /stats ────────────────────────────────────────────────────────────────
 
     def cmd_stats(self, args: list[str] | None = None) -> None:
-        from cli.display import BOLD, DIM, GREEN, YELLOW, RESET
+        from cli.display import BOLD, GREEN, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -369,8 +369,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /tasks ────────────────────────────────────────────────────────────────
 
     def cmd_tasks(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
-        from app.core.supervisor import supervisor, TaskStatus
+        from app.core.supervisor import TaskStatus, supervisor
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
         sub = args[0].lower() if args else "list"
 
         if sub == "list":
@@ -419,8 +419,8 @@ class DevToolsCommands(DevToolsQualityMixin):
 
     def cmd_ci(self, args: list[str]) -> None:
         """Run the full local CI pipeline: ruff, mypy, pytest --cov, bandit."""
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, RESET
         from app.core import process_runner
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -491,7 +491,7 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /logs ─────────────────────────────────────────────────────────────────
 
     def cmd_logs(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, CYAN, YELLOW, RED, RESET
+        from cli.display import BOLD, DIM, RED, RESET, YELLOW
         n = 50
         if args:
             try:
@@ -521,8 +521,8 @@ class DevToolsCommands(DevToolsQualityMixin):
     # ── /crashes ──────────────────────────────────────────────────────────────
 
     def cmd_crashes(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, RESET
         from app.core import crash_db
+        from cli.display import BOLD, DIM, GREEN, RED, RESET
         sub = args[0].lower() if args else "list"
         if sub == "clear":
             n = crash_db.clear_crashes()

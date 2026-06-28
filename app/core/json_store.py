@@ -14,11 +14,11 @@ _log = logging.getLogger("ilx_cli.json_store")
 class JsonStore:
     DEFAULT_PATH: Path = Path.home() / ".ilx_cli" / "config.json"
 
-    _instance: "JsonStore | None" = None
+    _instance: JsonStore | None = None
     _instance_lock = threading.Lock()
 
     @classmethod
-    def get(cls) -> "JsonStore":
+    def get(cls) -> JsonStore:
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = cls()

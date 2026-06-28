@@ -17,16 +17,19 @@ def _make_cfg(mode: PermissionMode, **kwargs) -> AppConfig:
 
 
 class TestDenyAll:
+    @pytest.mark.security
     def test_blocks_execute(self):
         eng = PermissionEngine(_make_cfg(PermissionMode.DENY_ALL))
         op = FileOperation(op_type="execute", path="", command=["ls"])
         assert eng.request_permission(op) is False
 
+    @pytest.mark.security
     def test_blocks_write(self):
         eng = PermissionEngine(_make_cfg(PermissionMode.DENY_ALL))
         op = FileOperation(op_type="modify", path="/tmp/x.py")
         assert eng.request_permission(op) is False
 
+    @pytest.mark.security
     def test_blocks_create(self):
         eng = PermissionEngine(_make_cfg(PermissionMode.DENY_ALL))
         op = FileOperation(op_type="create", path="/tmp/new.py", new_content="x=1")
@@ -44,6 +47,7 @@ class TestAutoApprove:
         op = FileOperation(op_type="create", path="/tmp/new.py", new_content="x=1")
         assert eng.request_permission(op) is True
 
+    @pytest.mark.security
     def test_denylist_overrides_auto(self):
         eng = PermissionEngine(_make_cfg(PermissionMode.AUTO_APPROVE, command_denylist=["rm"]))
         op = FileOperation(op_type="execute", path="", command=["rm", "-rf", "/"])
@@ -96,6 +100,7 @@ class TestAskMode:
 
 
 class TestDenylistPriority:
+    @pytest.mark.security
     def test_denylist_beats_allowlist(self):
         """Denylist is checked before allowlist — deny wins."""
         cfg = _make_cfg(
@@ -109,12 +114,14 @@ class TestDenylistPriority:
 
 
 class TestSandboxMode:
+    @pytest.mark.security
     def test_read_only_blocks_execute_under_auto(self):
         cfg = _make_cfg(PermissionMode.AUTO_APPROVE, sandbox_mode="read_only")
         eng = PermissionEngine(cfg)
         op = FileOperation(op_type="execute", path="", command=["python", "script.py"])
         assert eng.request_permission(op) is False
 
+    @pytest.mark.security
     def test_read_only_blocks_execute_under_ask(self):
         cfg = _make_cfg(PermissionMode.ASK, sandbox_mode="read_only")
         eng = PermissionEngine(cfg)
@@ -123,12 +130,14 @@ class TestSandboxMode:
         with patch("builtins.input", side_effect=AssertionError("input() should not be called")):
             assert eng.request_permission(op) is False
 
+    @pytest.mark.security
     def test_workspace_sandbox_passes_through_to_permission(self):
         cfg = _make_cfg(PermissionMode.AUTO_APPROVE, sandbox_mode="workspace")
         eng = PermissionEngine(cfg)
         op = FileOperation(op_type="execute", path="", command=["pytest"])
         assert eng.request_permission(op) is True
 
+    @pytest.mark.security
     def test_disabled_sandbox_allows_auto(self):
         cfg = _make_cfg(PermissionMode.AUTO_APPROVE, sandbox_mode="disabled")
         eng = PermissionEngine(cfg)

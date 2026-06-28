@@ -3,6 +3,7 @@
 Use these for all user-facing output in CLI command files.
 """
 from __future__ import annotations
+
 import json as _json
 import sys
 

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 from cli.display_compat import out, out_error
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
 
 _log = logging.getLogger("ilx_cli.fix_cmds")
 
@@ -16,7 +16,7 @@ _log = logging.getLogger("ilx_cli.fix_cmds")
 class FixCommands:
     """/fix-tests command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_fix_tests(self, args: list[str]) -> None:

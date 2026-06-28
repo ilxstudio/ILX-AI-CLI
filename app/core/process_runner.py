@@ -6,12 +6,50 @@ Key guarantees:
   - Handles Windows-specific console-window suppression (avoids WinError 6)
   - Always decodes stdout/stderr as UTF-8 with errors="replace"
   - Gracefully handles FileNotFoundError and TimeoutExpired
+  - Sanitizes the child environment by default (strips API keys and secrets)
 """
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
 from dataclasses import dataclass
+
+# Environment variable prefixes that should never be exposed to child processes.
+_SENSITIVE_ENV_PREFIXES = (
+    "ANTHROPIC_", "OPENAI_", "GROQ_", "GEMINI_", "HUGGINGFACE_", "HF_",
+    "AWS_", "AZURE_", "GITHUB_TOKEN", "SENDGRID_", "STRIPE_", "TWILIO_",
+    "ILX_KEY",
+)
+
+# Safe environment variables that are always passed through.
+_SAFE_ENV_KEYS = {
+    "PATH", "PYTHONPATH", "SYSTEMROOT", "COMSPEC", "HOME", "USERPROFILE",
+    "USERNAME", "LANG", "TZ", "TERM", "COLORTERM", "COLUMNS", "LINES",
+    "VIRTUAL_ENV", "CONDA_PREFIX", "JAVA_HOME", "NODE_PATH",
+}
+
+
+def _sanitized_env() -> dict[str, str]:
+    """Return a copy of ``os.environ`` with sensitive variables removed.
+
+    Strips keys whose names start with any prefix in ``_SENSITIVE_ENV_PREFIXES``
+    as well as keys ending with ``_KEY``, ``_TOKEN``, ``_SECRET``,
+    ``_PASSWORD``, or ``_PASSWD`` — unless the key is in ``_SAFE_ENV_KEYS``.
+    """
+    _bad_suffixes = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
+    env: dict[str, str] = {}
+    for k, v in os.environ.items():
+        upper = k.upper()
+        if upper in _SAFE_ENV_KEYS:
+            env[k] = v
+            continue
+        if upper.startswith(_SENSITIVE_ENV_PREFIXES):
+            continue
+        if any(upper.endswith(s) for s in _bad_suffixes):
+            continue
+        env[k] = v
+    return env
 
 
 @dataclass
@@ -28,7 +66,8 @@ def run(
     cwd: str | None = None,
     timeout: int = 30,
     capture: bool = True,
-    env: "dict[str, str] | None" = None,
+    env: dict[str, str] | None = None,
+    inherit_env: bool = False,
 ) -> ProcessResult:
     """Run *cmd* as a subprocess and return a :class:`ProcessResult`.
 
@@ -45,13 +84,23 @@ def run(
         When ``True`` (default) stdout and stderr are captured and returned in
         the result.  When ``False`` they are inherited from the parent process.
     env:
-        Optional environment mapping for the child process.  ``None`` inherits
-        the current process environment.
+        Optional environment mapping for the child process.  When ``None``
+        (default) the child receives a sanitized copy of the current environment
+        with sensitive variables removed.  Explicit mappings are passed as-is.
+    inherit_env:
+        When ``True`` the child inherits the *full* parent environment
+        (opt-in for callers that genuinely need every variable).  Ignored
+        when *env* is not ``None``.
     """
+    if env is None:
+        child_env: dict[str, str] | None = None if inherit_env else _sanitized_env()
+    else:
+        child_env = env
+
     kwargs: dict[str, object] = {
         "cwd": cwd,
         "timeout": timeout,
-        "env": env,
+        "env": child_env,
     }
 
     if capture:

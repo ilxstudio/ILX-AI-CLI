@@ -40,8 +40,10 @@ from __future__ import annotations
 import logging
 import math
 import re
-from collections import Counter
+from collections import Counter, OrderedDict
 from dataclasses import dataclass
+
+from app.core.thread_pool import pool as _pool
 
 _log = logging.getLogger("ilx_cli.rag")
 
@@ -151,6 +153,9 @@ def _bm25_score(
     return score
 
 
+_PARALLEL_CHUNK_THRESHOLD = 50
+
+
 def rank_chunks_scored(
     chunks: list[Chunk], query: str, *, top_k: int
 ) -> list[tuple[float, Chunk]]:
@@ -158,6 +163,11 @@ def rank_chunks_scored(
 
     Scores are raw BM25 values.  Returns zero-scored pairs when the query is
     empty or no term matches — never an empty list (unless ``chunks`` is empty).
+
+    When the chunk list exceeds ``_PARALLEL_CHUNK_THRESHOLD`` (50), scoring is
+    distributed across the shared thread pool to reduce wall-clock time on
+    large document sets.  For smaller lists the overhead of thread dispatch
+    outweighs the benefit, so the sequential path is taken.
     """
     if not chunks:
         return []
@@ -170,10 +180,21 @@ def rank_chunks_scored(
         for t in set(d):
             df[t] = df.get(t, 0) + 1
     q_tokens = _tokenise(query)
-    scored = [
-        (_bm25_score(q_tokens, d, avg_dl, df, len(docs)), c)
-        for d, c in zip(docs, chunks)
-    ]
+    n_docs = len(docs)
+
+    if n_docs > _PARALLEL_CHUNK_THRESHOLD:
+        # Score chunks in parallel using the shared thread pool.
+        def _score_pair(pair: tuple[list[str], Chunk]) -> tuple[float, Chunk]:
+            d, c = pair
+            return (_bm25_score(q_tokens, d, avg_dl, df, n_docs), c)
+
+        scored = list(_pool().map(_score_pair, zip(docs, chunks)))
+    else:
+        scored = [
+            (_bm25_score(q_tokens, d, avg_dl, df, n_docs), c)
+            for d, c in zip(docs, chunks)
+        ]
+
     scored.sort(key=lambda x: x[0], reverse=True)
     nonzero = [(s, c) for s, c in scored if s > 0]
     if nonzero:
@@ -246,11 +267,12 @@ class RAG:
     """
 
     _MAX_FILES: int = 500
+    _MAX_CACHE: int = 128  # LRU cap — prevents unbounded growth in long sessions
 
     def __init__(self) -> None:
-        self._files: dict[str, str] = {}   # filename → content
-        self._query_cache: dict[str, str] = {}   # cache_key → rendered result
-        self._cache_version: int = 0             # bumped on every add/remove
+        self._files: dict[str, str] = {}              # filename → content
+        self._query_cache: OrderedDict[str, str] = OrderedDict()  # LRU cache
+        self._cache_version: int = 0                  # bumped on every add/remove
 
     # ── Mutation ─────────────────────────────────────────────────────────────
 
@@ -258,7 +280,7 @@ class RAG:
         """Index (or re-index) a file."""
         self._files[filename] = content
         self._cache_version += 1
-        self._query_cache.clear()
+        self._query_cache.clear()  # type: ignore[attr-defined]
         _log.debug("RAG: added %s (%d chars)", filename, len(content))
         # Evict oldest file if cap exceeded (FIFO — dict preserves insertion order)
         if len(self._files) > self._MAX_FILES:
@@ -295,16 +317,21 @@ class RAG:
     def query(self, text: str, *, top_k: int = 6, max_chars: int = 8_000) -> str:
         """Return BM25-ranked chunks relevant to *text*.
 
-        Results are cached per (version, top_k, max_chars, text) key.
-        The cache is invalidated whenever add(), remove(), or clear() is called.
+        Results are cached per (version, top_k, max_chars, text) key using an
+        LRU OrderedDict capped at _MAX_CACHE entries.  The cache is invalidated
+        whenever add(), remove(), or clear() is called.
         """
         cache_key = f"{self._cache_version}:{top_k}:{max_chars}:{text}"
         if cache_key in self._query_cache:
+            self._query_cache.move_to_end(cache_key)
             _log.debug("RAG: query cache hit (version %d)", self._cache_version)
             return self._query_cache[cache_key]
         files = list(self._files.items())
         result = build_rag_context(files, text, max_chars=max_chars, top_k=top_k)
         self._query_cache[cache_key] = result
+        self._query_cache.move_to_end(cache_key)
+        if len(self._query_cache) > self._MAX_CACHE:
+            self._query_cache.popitem(last=False)
         return result
 
     # ── Stats ────────────────────────────────────────────────────────────────

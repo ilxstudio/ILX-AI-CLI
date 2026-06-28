@@ -10,7 +10,6 @@ import sys
 import threading
 import time
 
-
 _FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
@@ -32,7 +31,7 @@ class Spinner:
             time.sleep(self.interval)
             i += 1
 
-    def start(self) -> "Spinner":
+    def start(self) -> Spinner:
         if sys.stdout.isatty():
             self._thread.start()
         return self
@@ -45,7 +44,7 @@ class Spinner:
             sys.stdout.write("\r" + " " * (len(self.label) + 8) + "\r")
             sys.stdout.flush()
 
-    def __enter__(self) -> "Spinner":
+    def __enter__(self) -> Spinner:
         return self.start()
 
     def __exit__(self, *_) -> None:

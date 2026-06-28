@@ -7,57 +7,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error, out_status
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
+from cli.display_compat import out, out_error
 
 _log = logging.getLogger("ilx_cli.perm_cmds")
 
-# Profile definitions: name → {reads, writes, commands, network}
-PROFILES: dict[str, dict[str, str]] = {
-    "safe": {
-        "reads":    "ask",
-        "writes":   "ask",
-        "commands": "ask",
-        "network":  "ask",
-        "desc":     "Ask before everything — maximum control",
-    },
-    "coding": {
-        "reads":    "auto",
-        "writes":   "ask",
-        "commands": "ask",
-        "network":  "deny",
-        "desc":     "Auto-read files, ask before writes/commands, no network",
-    },
-    "review": {
-        "reads":    "auto",
-        "writes":   "deny",
-        "commands": "deny",
-        "network":  "deny",
-        "desc":     "Read-only — no writes, no commands, no network",
-    },
-    "ci": {
-        "reads":    "auto",
-        "writes":   "auto",
-        "commands": "auto",
-        "network":  "deny",
-        "desc":     "CI mode — auto-approve reads/writes/commands from allowlist; no network",
-    },
-    "locked": {
-        "reads":    "deny",
-        "writes":   "deny",
-        "commands": "deny",
-        "network":  "deny",
-        "desc":     "No tool use at all — chat only",
-    },
-}
-
-VALID_PROFILES = list(PROFILES.keys())
+# Re-export from the canonical location so existing imports still work.
+from app.core.permission_profiles import PROFILES, VALID_PROFILES  # noqa: E402
 
 
 class PermCommands:
     """/permission command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def cmd_permission(self, args: list[str]) -> None:

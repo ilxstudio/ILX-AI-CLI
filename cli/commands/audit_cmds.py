@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.core import process_runner
-from cli.display_compat import out, out_error, out_status, out_result
+from cli.display_compat import out, out_error, out_result, out_status
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
@@ -25,24 +25,24 @@ from cli.commands.audit_helpers import (
     inventory_ilx_features,
 )
 from cli.commands.audit_log_cmds import (
-    audit_replay,
+    audit_diff,
     audit_explain,
     audit_export,
-    audit_diff,
+    audit_replay,
 )
 
 
 class AuditCommands:
     """Handles /audit slash commands."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     def _wf(self) -> str | None:
         return self.cfg.working_folder or None
 
     def _require_workspace(self) -> str | None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
         wf = self._wf()
         if not wf:
             out_error(f"{YELLOW}No workspace set. Use /workspace first.{RESET}")
@@ -73,7 +73,7 @@ class AuditCommands:
     # ── /audit full ──────────────────────────────────────────────────────────
 
     def _audit_full(self, args: list[str]) -> None:
-        from cli.display import BOLD, CYAN, DIM, GREEN, YELLOW, RED, RESET
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -118,7 +118,7 @@ class AuditCommands:
 
     def _run_security(self, wf: str) -> int:
         """Run security checks; return score 0-100."""
-        from cli.display import BOLD, DIM, GREEN, YELLOW, RED, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
         root = Path(wf)
         deductions = 0
@@ -219,7 +219,7 @@ class AuditCommands:
 
     def _run_quality(self, wf: str) -> int:
         """Run code-quality checks; return score 0-100."""
-        from cli.display import BOLD, DIM, GREEN, YELLOW, RED, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
         root = Path(wf)
         deductions = 0
@@ -325,7 +325,8 @@ class AuditCommands:
     def _run_deps(self, wf: str) -> int:
         """Run dependency health checks; return score 0-100."""
         import re as _re
-        from cli.display import BOLD, DIM, GREEN, YELLOW, RED, RESET
+
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
         root = Path(wf)
         deductions = 0
@@ -425,8 +426,8 @@ class AuditCommands:
     # ── /audit compare ────────────────────────────────────────────────────────
 
     def _audit_compare(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, YELLOW, RED, RESET
         from app.core.web_fetch import fetch_url
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
         target_tool = args[0] if args else None
 

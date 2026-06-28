@@ -9,12 +9,20 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import threading
 import time
 from pathlib import Path
 
 from app.core.web_fetch import fetch_url as fetch_url  # SSRF-safe; re-exported for mocking
 
 _log = logging.getLogger("ilx_cli.research_fetcher")
+
+# ── In-flight request deduplication ─────────────────────────────────────────
+# When multiple threads request the same URL simultaneously, only one performs
+# the network fetch.  Others wait on an Event and then read from cache.
+
+_in_flight: dict[str, threading.Event] = {}
+_in_flight_lock = threading.Lock()
 
 # ── Topic → URL mapping ──────────────────────────────────────────────────────
 
@@ -161,7 +169,7 @@ def fetch_research(
     *,
     max_urls: int = 4,
     timeout: int = 8,
-    cache: "ResearchCache | None" = None,
+    cache: ResearchCache | None = None,
 ) -> list[dict]:
     """Fetch documentation pages for the given topics.
 
@@ -209,11 +217,40 @@ def fetch_research(
                 fetched_for_topic += 1
                 continue
 
-            # Live fetch
+            # Live fetch — deduplicated across concurrent callers for the same URL
+            event: threading.Event | None = None
+            with _in_flight_lock:
+                if url in _in_flight:
+                    # Another thread is already fetching this URL — wait for it
+                    wait_event = _in_flight[url]
+                else:
+                    # Claim this URL for ourselves
+                    event = threading.Event()
+                    _in_flight[url] = event
+
+            if event is None:
+                # We were not the fetcher — wait for the other thread then re-check cache
+                wait_event.wait(timeout=60.0)
+                cached_text = cache.get(url) if cache else None
+                if cached_text is not None:
+                    from urllib.parse import urlparse
+                    hostname = urlparse(url).hostname or url
+                    results.append({
+                        "url":   url,
+                        "title": hostname,
+                        "text":  cached_text,
+                        "topic": topic,
+                    })
+                    fetched_for_topic += 1
+                continue
+
             try:
                 result = fetch_url(url, timeout=timeout)
             except Exception as exc:
                 _log.debug("fetch_research: error fetching %s: %s", url, exc)
+                with _in_flight_lock:
+                    _in_flight.pop(url, None)
+                event.set()
                 continue
 
             if not result.get("ok") or not result.get("text", "").strip():
@@ -221,6 +258,9 @@ def fetch_research(
                     "fetch_research: skipped %s (ok=%s, text_len=%d)",
                     url, result.get("ok"), len(result.get("text", "")),
                 )
+                with _in_flight_lock:
+                    _in_flight.pop(url, None)
+                event.set()
                 continue
 
             text = result["text"]
@@ -231,6 +271,10 @@ def fetch_research(
 
             if cache:
                 cache.set(url, text)
+
+            with _in_flight_lock:
+                _in_flight.pop(url, None)
+            event.set()
 
             results.append({
                 "url":   url,

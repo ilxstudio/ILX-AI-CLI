@@ -1,5 +1,11 @@
 # ILX AI CLI
 
+[![CI](https://github.com/ilxstudio/ilx-ai-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ilxstudio/ilx-ai-cli/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/ilx-ai-cli?color=blue)](https://pypi.org/project/ilx-ai-cli/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Coverage](https://img.shields.io/badge/coverage-75%25%2B-brightgreen)](https://github.com/ilxstudio/ilx-ai-cli/actions)
+
 **Free. Open source. No subscriptions. No vendor lock-in. Works with any LLM — local or cloud.**
 
 Run a full-featured AI coding assistant entirely on your machine using Ollama and Llama 3, Qwen, or Mistral.

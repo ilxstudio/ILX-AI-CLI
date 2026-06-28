@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 
 import httpx
 
-from codex.app.llm_client_base import BaseLLMClient, TokenUsage, _handle_rate_limit, _call_with_retry
+from codex.app.llm_client_base import BaseLLMClient, TokenUsage, _call_with_retry
 
 _log = logging.getLogger(__name__)
 

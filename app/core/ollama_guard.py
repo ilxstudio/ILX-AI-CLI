@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 _log = logging.getLogger("ilx_cli.ollama_guard")
 _T = TypeVar("_T")

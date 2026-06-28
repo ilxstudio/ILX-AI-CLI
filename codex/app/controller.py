@@ -1,28 +1,27 @@
 from __future__ import annotations
+
 import ast
 import difflib
-import json
 import traceback
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Callable
 
-from .paths import AppPaths
-from .workspace import WorkspaceManager
-from .runner import CommandRunner, RunResult
-from .logger import AgentLogger, generate_run_id
-from .llm_client import BaseLLMClient, OllamaClient, _CODEX_SYSTEM
-from .response_parser import ResponseParser, LLMResponse, ParseError
-from .validator import ResponseValidator, ValidationError
 from .chunker import ProjectChunker
+from .llm_client import BaseLLMClient
+from .logger import AgentLogger, generate_run_id
 from .memory import AgentMemory, AttemptRecord
+from .paths import AppPaths
 from .prompt_builder import PromptBuilder
+from .response_parser import ParseError, ResponseParser
+from .runner import CommandRunner, RunResult
+from .validator import ResponseValidator, ValidationError
+from .workspace import WorkspaceManager
 
 try:
-    from app.core import project_rules as _project_rules
-    from app.core import hooks as _hooks
     from app.core import git_helper as _git_helper
+    from app.core import hooks as _hooks
+    from app.core import project_rules as _project_rules
 except ImportError:
     _project_rules = None  # type: ignore[assignment]
     _hooks = None          # type: ignore[assignment]
@@ -94,6 +93,7 @@ class CodingAgent:
         run_timeout:          int = 30,
         auto_commit:          bool = False,
         commit_message_prefix: str = "ilx: ",
+        on_diff:              Callable[[str, str, str], None] | None = None,
     ):
         self.llm_client            = llm_client
         self.on_status             = on_status
@@ -103,6 +103,7 @@ class CodingAgent:
         self.run_timeout           = run_timeout
         self.auto_commit           = auto_commit
         self.commit_message_prefix = commit_message_prefix
+        self.on_diff               = on_diff
 
     def run(
         self,
@@ -274,7 +275,16 @@ class CodingAgent:
                                 workspace.write_file(fa.path, existing + separator + fa.content)
                             else:
                                 self._emit(f"Writing: {fa.path}  ({line_count} lines)")
+                                try:
+                                    old_content = workspace.read_file(fa.path)
+                                except (FileNotFoundError, OSError):
+                                    old_content = ""
                                 workspace.write_file(fa.path, fa.content)
+                                if self.on_diff and fa.action in ("replace", "create") and fa.content:
+                                    try:
+                                        self.on_diff(fa.path, old_content, fa.content)
+                                    except Exception:
+                                        pass
                             self._emit_output("file", f"{fa.path}  ·  {line_count} lines written")
                             attempt_files_written.append(fa.path)
                             all_files_written.append(fa.path)
@@ -435,7 +445,7 @@ class CodingAgent:
                 tb  = traceback.format_exc()
                 logger.log("unexpected_error", {"error": str(exc), "traceback": tb[:1000]})
                 _log.error("Agent attempt %d failed: %s", attempt, exc, exc_info=True)
-                from app.core.error_classifier import classify_error, ErrorClass
+                from app.core.error_classifier import ErrorClass, classify_error
                 classified = classify_error(exc, getattr(self.llm_client, 'model', ''))
 
                 # Non-retriable classes abort immediately

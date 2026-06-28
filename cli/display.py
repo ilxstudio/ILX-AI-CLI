@@ -165,8 +165,8 @@ def highlight_code(text: str, language: str = "") -> str:
     """Apply syntax highlighting via Pygments if available, else return plain text."""
     try:
         from pygments import highlight
-        from pygments.lexers import get_lexer_by_name, guess_lexer
         from pygments.formatters import Terminal256Formatter
+        from pygments.lexers import get_lexer_by_name, guess_lexer
 
         try:
             lexer = get_lexer_by_name(language, stripall=True) if language else guess_lexer(text)
@@ -205,7 +205,13 @@ def render_chat_response(text: str) -> None:
 
 
 def print_banner() -> None:
-    """Print the startup banner, using Rich Panel styling when available."""
+    """Print the startup banner, using Rich Panel styling when available.
+
+    Set the environment variable ``ILX_NO_BANNER=1`` to suppress the banner
+    entirely — useful for scripted or CI invocations.
+    """
+    if os.environ.get("ILX_NO_BANNER", "").strip() == "1":
+        return
     try:
         from cli.rich_display import _use_rich
         if _use_rich():
@@ -233,15 +239,15 @@ def print_help() -> None:
   {BOLD}WORKSPACE{RESET}   {CYAN}/workspace{RESET}  {CYAN}/init [template]{RESET}  {CYAN}/rules{RESET}  {CYAN}/branch{RESET}
   {BOLD}CONTROL{RESET}     {CYAN}/permission [safe|coding|review|ci|locked]{RESET}  {CYAN}/sandbox [workspace|read-only|off]{RESET}
   {BOLD}ALLOW/DENY{RESET}  {CYAN}/allow <cmd>{RESET}  {CYAN}/deny <cmd>{RESET}  {CYAN}/allowlist{RESET}
-  {BOLD}GIT{RESET}         {CYAN}/git status|diff|log|commit|pull|push|stash|revert|ai-commit{RESET}   {CYAN}/diff [file]{RESET}
-  {BOLD}RUN & TEST{RESET}  {CYAN}/run [cmd]{RESET}  {CYAN}/test [--cov]{RESET}  {CYAN}/lint [fix]{RESET}  {CYAN}/ci{RESET}  {CYAN}/watch{RESET}
+  {BOLD}GIT{RESET}         {CYAN}/git status|diff|log|commit|pull|push|stash|revert|ai-commit{RESET}   {CYAN}/diff [file]{RESET}   {CYAN}/diffexplain{RESET}
+  {BOLD}RUN & TEST{RESET}  {CYAN}/run [cmd]{RESET}  {CYAN}/test [--cov]{RESET}  {CYAN}/lint [fix]{RESET}  {CYAN}/ci{RESET}  {CYAN}/watch{RESET}  {CYAN}/timings{RESET}
   {BOLD}TASKS{RESET}       {CYAN}/tasks{RESET}  {CYAN}/kill [ID]{RESET}  {CYAN}/attach [ID]{RESET}
   {BOLD}SCAFFOLD{RESET}    {CYAN}/scaffold <type> <name>{RESET}  {CYAN}/readme{RESET}  {CYAN}/mcp{RESET}
   {BOLD}USER TOOLS{RESET}  {CYAN}/tool list|create|run{RESET}
   {BOLD}LOCAL AI{RESET}    {CYAN}/setup local{RESET}  {CYAN}/benchmark{RESET}  {CYAN}/free{RESET}
   {BOLD}WORKFLOW{RESET}    {CYAN}/plan <task>{RESET}  {CYAN}/plan approve{RESET}  {CYAN}/review{RESET}  {CYAN}/fix-tests{RESET}
   {BOLD}INDEX{RESET}       {CYAN}/index build{RESET}  {CYAN}/index explain <q>{RESET}  {CYAN}/index status{RESET}
-  {BOLD}UTILITIES{RESET}   {CYAN}/version{RESET}  {CYAN}/export [file]{RESET}  {CYAN}/copy{RESET}  {CYAN}/alias{RESET}
+  {BOLD}UTILITIES{RESET}   {CYAN}/version{RESET}  {CYAN}/export [file]{RESET}  {CYAN}/copy{RESET}  {CYAN}/alias{RESET}  {CYAN}/completions{RESET}  {CYAN}/search <q>{RESET}  {CYAN}/env{RESET}  {CYAN}/profile{RESET}  {CYAN}/notify on|off{RESET}
   {BOLD}AUDIT{RESET}       {CYAN}/audit [full|security|quality|replay|explain|export|diff]{RESET}
 
   {CYAN}/help dev{RESET}  — show full developer command reference
@@ -363,6 +369,7 @@ def print_help_dev() -> None:
   {CYAN}/git reset HEAD <file>{RESET}   — unstage a specific file (safe)
   {CYAN}/git ai-commit{RESET}           — LLM generates commit message from diff; review before committing
   {CYAN}/diff [file]{RESET}             — show git diff HEAD with syntax highlighting
+  {CYAN}/diffexplain [--staged]{RESET}  — ask LLM to explain the current diff in plain English
 
 {BOLD}Dev Tools:{RESET}
   {CYAN}/run [cmd]{RESET}               — run a command in the workspace
@@ -371,10 +378,11 @@ def print_help_dev() -> None:
   {CYAN}/ci{RESET}                      — run full CI pipeline (ruff, mypy, pytest, bandit)
   {CYAN}/watch [--glob pattern]{RESET}  — watch files and auto-run tests (default: *.py)
   {CYAN}/format{RESET}                  — auto-format workspace code (ruff / black)
-  {CYAN}/profile [script]{RESET}        — cProfile top 25 hotspots
+  {CYAN}/profile [--json]{RESET}         — system profile for bug reports (Python, platform, deps, errors)
   {CYAN}/build [entry]{RESET}           — PyInstaller build (bumps patch version)
   {CYAN}/deps [install|outdated]{RESET} — pip package management
-  {CYAN}/env{RESET}                     — show .env file variables
+  {CYAN}/env [--json]{RESET}            — show ILX environment: Python, platform, API keys, opt deps
+  {CYAN}/timings [reset]{RESET}         — show a table of recorded operation timings (last 20)
 
 {BOLD}Analysis & Quality:{RESET}
   {CYAN}/stats [--json]{RESET}          — codebase stats (--json for machine-readable output)
@@ -441,6 +449,9 @@ def print_help_dev() -> None:
   {CYAN}/alias list{RESET}              — list all defined aliases
   {CYAN}/alias <name> <cmd>{RESET}      — create a slash-command alias (e.g. /alias hi /chat hi!)
   {CYAN}/alias remove <name>{RESET}     — remove an alias
+  {CYAN}/completions [--print]{RESET}   — generate bash/zsh tab-completion scripts for ilx
+  {CYAN}/search <query>{RESET}          — search saved session history for a keyword
+  {CYAN}/notify on|off|test{RESET}      — toggle desktop notifications for long-running tasks
   {CYAN}/ssh <user@host>{RESET}         — connect to remote machine via SSH
   {CYAN}/ssh help{RESET}                — show SSH setup guide (keys & password files)
   {CYAN}/fetch <url>{RESET}             — fetch a URL and show readable text

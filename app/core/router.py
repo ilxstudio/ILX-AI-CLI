@@ -9,8 +9,7 @@ Routing strategies:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -78,7 +77,7 @@ class ModelRouter:
         ],
     }
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     def route(self, task_type: str = "chat") -> RouteDecision:

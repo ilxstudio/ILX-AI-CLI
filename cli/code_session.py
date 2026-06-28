@@ -15,20 +15,26 @@ _log = logging.getLogger("ilx_cli.code")
 class CodeSession:
     """Handles one code-agent task dispatch."""
 
-    def __init__(self, cfg: "AppConfig", ctx: "ContextManager") -> None:
+    def __init__(self, cfg: AppConfig, ctx: ContextManager) -> None:
         self.cfg = cfg
         self.ctx = ctx
 
     def run_task(self, task: str) -> bool:
         """Run the code-agent on task. Returns True on success."""
-        from cli.display import (
-            BOLD, DIM, GREEN, RED, YELLOW, CYAN, MAGENTA, RESET,
-            print_diff_line, print_hr,
-        )
         from app.core import git_helper
         from app.core.config import PermissionMode
-        from codex.app.llm_client import get_llm_client
+        from cli.diff_viewer import show_file_change
+        from cli.display import (
+            DIM,
+            GREEN,
+            RED,
+            RESET,
+            YELLOW,
+            print_diff_line,
+            print_hr,
+        )
         from codex.app.controller import CodingAgent
+        from codex.app.llm_client import get_llm_client
 
         cfg = self.cfg
 
@@ -86,6 +92,7 @@ class CodeSession:
             max_attempts=cfg.autofix_max_iterations,
             run_timeout=cfg.exec_timeout,
             auto_commit=False,
+            on_diff=lambda path, old, new: show_file_change(path, old, new),
         )
 
         print_hr()
@@ -131,14 +138,19 @@ class CodeSession:
         Status updates are shown as ANSI in-place progress lines using ``\\r``.
         Returns True on success.
         """
-        from cli.display import (
-            BOLD, DIM, GREEN, RED, YELLOW, RESET,
-            print_hr,
-        )
         from app.core import git_helper
         from app.core.config import PermissionMode
-        from codex.app.llm_client import get_llm_client
+        from cli.diff_viewer import show_file_change
+        from cli.display import (
+            DIM,
+            GREEN,
+            RED,
+            RESET,
+            YELLOW,
+            print_hr,
+        )
         from codex.app.controller import CodingAgent
+        from codex.app.llm_client import get_llm_client
 
         cfg = self.cfg
 
@@ -205,6 +217,7 @@ class CodeSession:
             max_attempts=cfg.autofix_max_iterations,
             run_timeout=cfg.exec_timeout,
             auto_commit=False,
+            on_diff=lambda path, old, new: show_file_change(path, old, new),
         )
 
         print_hr()

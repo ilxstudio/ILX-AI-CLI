@@ -9,10 +9,9 @@ Also stores classified LLM API errors (from error_classifier) in a separate
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 _DB_PATH = Path.home() / ".ilx_cli" / "crashes.db"
@@ -61,7 +60,7 @@ def _signature(tb: str) -> str:
 
 def record(command: str, exit_code: int, stderr_tail: str) -> None:
     """Record a crash. *stderr_tail* is the last ~2 KB of stderr."""
-    ts  = datetime.now(timezone.utc).isoformat()
+    ts  = datetime.now(UTC).isoformat()
     sig = _signature(stderr_tail)
     with _conn() as con:
         con.execute(
@@ -125,7 +124,7 @@ def log_classified_error(classified: object, context: str = "") -> None:
     circular import at module load time.
     """
     try:
-        ts          = datetime.now(timezone.utc).isoformat()
+        ts          = datetime.now(UTC).isoformat()
         error_class = classified.error_class.name          # type: ignore[union-attr]
         message     = classified.message                   # type: ignore[union-attr]
         suggestion  = classified.suggestion                # type: ignore[union-attr]

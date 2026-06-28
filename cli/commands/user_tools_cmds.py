@@ -14,7 +14,7 @@ _log = logging.getLogger("ilx_cli.user_tools_cmds")
 class UserToolsCommands:
     """Handles /tool ... and user tool (/<name>) dispatching."""
 
-    def __init__(self, cfg: "AppConfig", llm_client=None) -> None:
+    def __init__(self, cfg: AppConfig, llm_client=None) -> None:
         self.cfg = cfg
         self.llm = llm_client
         # Lazy imports — avoid circular deps and slow startup
@@ -96,7 +96,7 @@ class UserToolsCommands:
     # ------------------------------------------------------------------
 
     def _cmd_list(self) -> None:
-        from cli.display import BOLD, DIM, GREEN, YELLOW, CYAN, RESET
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
         tools = self._get_registry().list_tools()
         print(f"\n{BOLD}User Tools:{RESET}")
         if not tools:
@@ -111,8 +111,7 @@ class UserToolsCommands:
         print()
 
     def _cmd_create(self, args: list[str], permission_callback=None) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
-        from cli.display import highlight_code
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW, highlight_code
 
         if len(args) < 2:
             print(
@@ -186,7 +185,7 @@ class UserToolsCommands:
         self._run_validation_and_register(name, desc, tool_path)
 
     def _cmd_run(self, args: list[str], permission_callback=None) -> None:
-        from cli.display import DIM, GREEN, YELLOW, CYAN, RESET
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
 
         if not args:
             print(f"  {YELLOW}Usage: /tool run <name> [args...]{RESET}")
@@ -233,7 +232,7 @@ class UserToolsCommands:
         registry.update_last_run(name, datetime.datetime.now().isoformat(timespec="seconds"))
 
     def _cmd_remove(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, CYAN, RESET
+        from cli.display import CYAN, DIM, GREEN, RED, RESET, YELLOW
 
         if not args:
             print(f"  {YELLOW}Usage: /tool remove <name>{RESET}")
@@ -274,7 +273,7 @@ class UserToolsCommands:
         print(f"  {GREEN}Tool /{name} removed.{RESET}")
 
     def _cmd_set_enabled(self, args: list[str], *, enabled: bool) -> None:
-        from cli.display import DIM, GREEN, YELLOW, RESET
+        from cli.display import GREEN, RESET, YELLOW
 
         verb = "enable" if enabled else "disable"
         if not args:
@@ -291,7 +290,7 @@ class UserToolsCommands:
             print(f"  {YELLOW}Tool '/{name}' not found.{RESET}")
 
     def _cmd_info(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, YELLOW, CYAN, RESET
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
         if not args:
             print(f"  {YELLOW}Usage: /tool info <name>{RESET}")
@@ -338,7 +337,7 @@ class UserToolsCommands:
 
     def _cmd_find(self, args: list[str]) -> None:
         """Search for tools by keyword: /tool find <query>."""
-        from cli.display import BOLD, DIM, GREEN, YELLOW, CYAN, RESET
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
         if not args:
             print(f"  {YELLOW}Usage: /tool find <query>{RESET}")
@@ -358,7 +357,7 @@ class UserToolsCommands:
         print()
 
     def _cmd_validate(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
+        from cli.display import DIM, RESET, YELLOW
 
         if not args:
             print(f"  {YELLOW}Usage: /tool validate <name>{RESET}")
@@ -390,7 +389,7 @@ class UserToolsCommands:
         permission_callback=None,
     ) -> None:
         """Invoke a registered user tool by name (called from app dispatch)."""
-        from cli.display import DIM, GREEN, YELLOW, CYAN, RESET
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
 
         registry = self._get_registry()
         tool = registry.get(name)
@@ -433,8 +432,9 @@ class UserToolsCommands:
 
     def _print_research_summary(self, research_context: str) -> None:
         """Print a brief summary of which research sources were consulted."""
-        from cli.display import DIM, CYAN, RESET
         import re
+
+        from cli.display import CYAN, DIM, RESET
         # Extract [Topic: X — Source: Y] lines from the context block
         pattern = re.compile(r"\[Topic:\s*(.+?)\s*—\s*Source:\s*(.+?)\]")
         matches = pattern.findall(research_context)
@@ -445,7 +445,7 @@ class UserToolsCommands:
             print(f"    {CYAN}•{RESET} {DIM}{source}{RESET} ({topic})")
 
     def _print_usage(self) -> None:
-        from cli.display import CYAN, YELLOW, DIM, RESET
+        from cli.display import CYAN, DIM, RESET, YELLOW
         print(
             f"  {YELLOW}Usage:{RESET}\n"
             f"    {CYAN}/tool list{RESET}                  — list all user tools\n"
@@ -486,9 +486,10 @@ class UserToolsCommands:
         tool_path: str,
     ) -> None:
         """Validate the tool file and register it if validation passes."""
-        from cli.display import DIM, GREEN, RED, YELLOW, CYAN, RESET
-        from app.core.user_tools.registry import UserTool
         import datetime
+
+        from app.core.user_tools.registry import UserTool
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
 
         validator = self._get_validator()
         print(f"  {DIM}Running validation checks...{RESET}")
@@ -543,7 +544,7 @@ class UserToolsCommands:
 
     def _print_validation_result(self, result) -> None:
         """Print stage-by-stage validation output."""
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         tick = f"{GREEN}✓{RESET}"
         cross = f"{RED}✗{RESET}"

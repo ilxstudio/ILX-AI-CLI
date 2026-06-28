@@ -35,6 +35,8 @@ dependencies = [
 dev = [
     "pytest>=9.0",
     "pytest-cov",
+    "pytest-xdist>=3.5",
+    "ruff>=0.4",
 ]
 pdf = ["pypdf>=4.0", "reportlab>=4.0"]
 docx = ["python-docx>=1.1"]
@@ -53,6 +55,9 @@ all = [
 
 [project.scripts]
 ilx = "main:main"
+
+[project.entry-points."ilx_ai.plugins"]
+# Third-party plugins go here
 
 [project.urls]
 Homepage = "https://github.com/ilxstudio/ilx-ai-cli"
@@ -82,6 +87,7 @@ omit = ["tests/*", "*/conftest.py", "main.py"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+fail_under = 50
 
 [tool.setuptools.packages.find]
 where = ["."]

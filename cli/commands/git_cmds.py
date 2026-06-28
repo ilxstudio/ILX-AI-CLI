@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error, out_status, out_result
+from cli.display_compat import out, out_error, out_result, out_status
 
 _log = logging.getLogger("ilx_cli.git")
 
@@ -21,7 +21,7 @@ _log = logging.getLogger("ilx_cli.git")
 def _repo_check(wf: str) -> bool:
     """Return True if *wf* is a git repository, print an error and return False otherwise."""
     from app.core import git_helper
-    from cli.display import YELLOW, RESET
+    from cli.display import RESET, YELLOW
     if not git_helper.is_git_repo(wf):
         out_error(f"  {YELLOW}Not a git repository: {wf}{RESET}")
         return False
@@ -51,7 +51,7 @@ def _confirm(prompt: str, cfg=None) -> bool:
 class GitCommands:
     """Handles /git and /branch slash commands."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     def _wf(self) -> str | None:
@@ -62,7 +62,7 @@ class GitCommands:
     # ------------------------------------------------------------------
 
     def cmd_git(self, args: list[str]) -> None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
 
         wf = self._wf()
         if not wf:
@@ -110,8 +110,8 @@ class GitCommands:
     # ------------------------------------------------------------------
 
     def _git_status(self, wf: str) -> None:
-        from cli.display import BOLD, GREEN, YELLOW, RESET
         from app.core import git_helper
+        from cli.display import BOLD, GREEN, RESET, YELLOW
 
         s = git_helper.status(wf)
         if not s.is_repo:
@@ -135,8 +135,8 @@ class GitCommands:
         out("")
 
     def _git_diff(self, wf: str, extra: list[str]) -> None:
-        from cli.display import DIM, RESET
         from app.core import git_helper
+        from cli.display import DIM, RESET
 
         if not _repo_check(wf):
             return
@@ -161,8 +161,8 @@ class GitCommands:
           /git commit "message"      (shorthand)
           /git commit                (prompts interactively)
         """
-        from cli.display import BOLD, GREEN, RED, YELLOW, DIM, RESET
         from app.core import git_helper
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -211,8 +211,8 @@ class GitCommands:
             out_error(f"  {RED}Commit failed: {commit_out}{RESET}")
 
     def _git_log(self, wf: str, args: list[str]) -> None:
-        from cli.display import BOLD, YELLOW, DIM, RESET
         from app.core import git_helper
+        from cli.display import BOLD, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -232,8 +232,8 @@ class GitCommands:
             out(f"  {YELLOW}No log available{RESET}")
 
     def _git_pull(self, wf: str) -> None:
-        from cli.display import GREEN, RED, YELLOW, DIM, RESET
         from app.core import git_helper
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -252,8 +252,8 @@ class GitCommands:
                 out(f"  {YELLOW}Tip: resolve conflicts, then run /git commit.{RESET}")
 
     def _git_push(self, wf: str, args: list[str]) -> None:
-        from cli.display import GREEN, RED, YELLOW, DIM, RESET
         from app.core import git_helper
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -282,8 +282,8 @@ class GitCommands:
             out_error(f"  {RED}Push failed:{RESET} {push_out}")
 
     def _git_stash(self, wf: str, args: list[str]) -> None:
-        from cli.display import GREEN, RED, YELLOW, DIM, RESET
         from app.core import git_helper
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -324,8 +324,8 @@ class GitCommands:
             out_error(f"  {RED}Stash failed:{RESET} {stash_out}")
 
     def _git_revert(self, wf: str, args: list[str]) -> None:
-        from cli.display import GREEN, RED, YELLOW, DIM, RESET
         from app.core import git_helper
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -366,8 +366,8 @@ class GitCommands:
         Usage: /git reset HEAD <file>
         /git reset --hard is explicitly blocked.
         """
-        from cli.display import GREEN, RED, YELLOW, DIM, RESET
         from app.core import git_helper
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -396,8 +396,8 @@ class GitCommands:
 
     def _git_ai_commit(self, wf: str) -> None:
         """Generate a commit message via the LLM from the staged diff, then commit."""
-        from cli.display import BOLD, GREEN, RED, YELLOW, DIM, CYAN, RESET
         from app.core import git_helper
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
@@ -437,8 +437,9 @@ class GitCommands:
 
         # Call the LLM via the configured provider (same pattern as /scaffold)
         try:
-            from codex.app.llm_client import get_llm_client
             import concurrent.futures as _cf
+
+            from codex.app.llm_client import get_llm_client
             client = get_llm_client(self.cfg)
             with _cf.ThreadPoolExecutor(max_workers=1) as _ex:
                 fut = _ex.submit(client.chat, [{"role": "user", "content": prompt}])
@@ -497,7 +498,7 @@ class GitCommands:
     # ------------------------------------------------------------------
 
     def cmd_diff(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, print_diff_line, RESET
+        from cli.display import BOLD, DIM, RESET, print_diff_line
         wf = self.cfg.working_folder
         if not wf:
             from cli.display import YELLOW
@@ -530,12 +531,68 @@ class GitCommands:
             out_error(f"  {RED}git diff timed out.{RESET}")
 
     # ------------------------------------------------------------------
+    # /diff explain — AI explanation of current diff
+    # ------------------------------------------------------------------
+
+    def cmd_diff_explain(self, args: list[str]) -> None:
+        """Explain the current git diff in plain English using the LLM."""
+        from app.core import git_helper
+        from cli.display import BOLD, DIM, RED, RESET, YELLOW
+
+        wf = self._wf()
+        if not wf:
+            out_error(f"  {YELLOW}No workspace set. Use /workspace to set one first.{RESET}")
+            return
+        if not _repo_check(wf):
+            return
+
+        staged_only = "--staged" in args or "--cached" in args
+
+        diff_text = git_helper.diff(wf, staged=staged_only)
+        if not diff_text or not diff_text.strip():
+            # Try staged if unstaged was empty
+            if not staged_only:
+                diff_text = git_helper.diff(wf, staged=True)
+        if not diff_text or not diff_text.strip():
+            out_status(f"  {DIM}No changes to explain.{RESET}")
+            return
+
+        # Truncate to avoid oversized context
+        lines = diff_text.splitlines()
+        if len(lines) > 400:
+            diff_text = "\n".join(lines[:400]) + "\n\n[diff truncated]"
+
+        out_status(f"  {DIM}Asking LLM to explain the diff…{RESET}")
+
+        prompt = (
+            "Summarize this git diff in plain English. "
+            "List each changed file and what was changed, "
+            "then give a 1-sentence overall summary.\n\n"
+            f"```diff\n{diff_text}\n```"
+        )
+
+        try:
+            import concurrent.futures as _cf
+
+            from codex.app.llm_client import get_llm_client
+            client = get_llm_client(self.cfg)
+            out(f"\n{BOLD}Diff explanation:{RESET}\n")
+            with _cf.ThreadPoolExecutor(max_workers=1) as _ex:
+                fut = _ex.submit(client.chat, [{"role": "user", "content": prompt}])
+                explanation = fut.result(timeout=90).strip()
+            for line in explanation.splitlines():
+                out(f"  {line}")
+            out("")
+        except Exception as exc:
+            out_error(f"  {RED}LLM call failed:{RESET} {exc}")
+
+    # ------------------------------------------------------------------
     # /branch command
     # ------------------------------------------------------------------
 
     def cmd_branch(self, args: list[str]) -> None:
-        from cli.display import GREEN, RED, YELLOW, CYAN, RESET
         from app.core import git_helper
+        from cli.display import CYAN, GREEN, RED, RESET, YELLOW
 
         wf = self._wf()
         if not wf:

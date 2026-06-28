@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 _log = logging.getLogger("ilx_cli.thread_pool")
 _T = TypeVar("_T")

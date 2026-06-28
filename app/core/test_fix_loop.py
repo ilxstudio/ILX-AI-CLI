@@ -6,9 +6,10 @@ import os
 import re
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
@@ -143,7 +144,7 @@ Rules:
 class TestFixLoop:
     """Runs tests, parses failures, asks LLM to fix, repeats up to max_attempts."""
 
-    def __init__(self, cfg: "AppConfig", max_attempts: int = 5) -> None:
+    def __init__(self, cfg: AppConfig, max_attempts: int = 5) -> None:
         self._cfg = cfg
         self._max = max_attempts
 
@@ -152,7 +153,7 @@ class TestFixLoop:
         working_folder: str,
         runner: list[str] | None = None,
         only: str | None = None,
-        on_progress: "Callable | None" = None,
+        on_progress: Callable | None = None,
     ) -> TestFixResult:
         """
         Run the test-fix loop.

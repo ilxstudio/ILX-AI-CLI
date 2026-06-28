@@ -71,3 +71,9 @@ junit*.xml
 # Editor
 *.swp
 *~
+
+# Local dev scripts (not for repo)
+dev.bat
+
+# Claude Code worktrees (temporary agent workspaces)
+.claude/worktrees/

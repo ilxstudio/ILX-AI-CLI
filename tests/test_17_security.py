@@ -350,6 +350,7 @@ def test_mcp_fetch_url_calls_web_fetch(tmp_path):
     assert ok, f"fetch_url tool result unexpected: {result}"
 
 
+@pytest.mark.security
 def test_mcp_sandbox_blocks_path_traversal(tmp_path):
     """read_file with a path-traversal arg fails sandbox check when working_folder is set."""
     from app.core.config import AppConfig

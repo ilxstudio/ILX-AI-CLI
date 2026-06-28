@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from cli.display_compat import out, out_error, out_result, out_status
 
 
-def run_pipe_mode(cfg: "AppConfig") -> None:
+def run_pipe_mode(cfg: AppConfig) -> None:
     """Read all of stdin and send as a single chat message, then exit."""
     from codex.app.llm_client import get_llm_client
 
@@ -32,9 +32,9 @@ def run_pipe_mode(cfg: "AppConfig") -> None:
     sys.exit(0)
 
 
-def run_argv_chat(prompt: str, cfg: "AppConfig") -> None:
+def run_argv_chat(prompt: str, cfg: AppConfig) -> None:
     """Send prompt as a single chat message and exit."""
-    from cli.display import BANNER, GREEN, RED, RESET
+    from cli.display import BANNER, GREEN, RESET
     from codex.app.llm_client import get_llm_client
 
     out_status(BANNER)
@@ -63,14 +63,15 @@ def run_argv_chat(prompt: str, cfg: "AppConfig") -> None:
     sys.exit(0)
 
 
-def run_argv_code(task: str, cfg: "AppConfig") -> None:
+def run_argv_code(task: str, cfg: AppConfig) -> None:
     """Run the code-agent on task and exit with appropriate code."""
-    from cli.display import BANNER, DIM, GREEN, RED, RESET, print_diff_line
-    from codex.app.llm_client import get_llm_client
-    from codex.app.controller import CodingAgent
-    from app.core.permissions import PermissionEngine
     from app.core import audit
     from app.core.config import PermissionMode
+    from app.core.permissions import PermissionEngine
+    from cli.diff_viewer import show_file_change
+    from cli.display import BANNER, DIM, GREEN, RED, RESET, print_diff_line
+    from codex.app.controller import CodingAgent
+    from codex.app.llm_client import get_llm_client
 
     out_status(BANNER)
     client = get_llm_client(cfg)
@@ -111,6 +112,7 @@ def run_argv_code(task: str, cfg: "AppConfig") -> None:
         on_status=_status,
         on_output=_output,
         permission_callback=_permission_callback,
+        on_diff=lambda path, old, new: show_file_change(path, old, new),
         max_attempts=cfg.autofix_max_iterations,
         run_timeout=cfg.exec_timeout,
     )
@@ -132,7 +134,7 @@ def run_argv_code(task: str, cfg: "AppConfig") -> None:
         sys.exit(1)
 
 
-def parse_argv(cfg: "AppConfig | None" = None) -> tuple[str | None, str]:
+def parse_argv(cfg: AppConfig | None = None) -> tuple[str | None, str]:
     """Parse sys.argv for --chat/--code and output/behaviour flags.
 
     Recognised flags (consumed and removed from the prompt):

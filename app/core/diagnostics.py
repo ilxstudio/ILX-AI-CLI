@@ -21,7 +21,7 @@ import os
 import platform
 import sys
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core import process_runner
@@ -88,7 +88,7 @@ def _version_info() -> str:
         f"Platform:          {platform.platform()}",
         f"Machine:           {platform.machine()}",
         f"Cwd:               {os.getcwd()}",
-        f"Bundle built:      {datetime.now(timezone.utc).isoformat()}",
+        f"Bundle built:      {datetime.now(UTC).isoformat()}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -170,5 +170,5 @@ def export(out_path: Path | str) -> Path:
 
 
 def default_export_filename() -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return f"ilx_cli_diagnostics_{ts}.zip"

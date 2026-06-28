@@ -5,7 +5,6 @@ No external network calls required — only model inference via Ollama/configure
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -130,7 +129,7 @@ class BenchmarkRunner:
         },
     ]
 
-    def __init__(self, cfg: "AppConfig", on_progress=None) -> None:
+    def __init__(self, cfg: AppConfig, on_progress=None) -> None:
         self._cfg = cfg
         self._on_progress = on_progress  # callback(task_name, index, total)
 
@@ -188,7 +187,9 @@ class BenchmarkRunner:
     def _query_model(self, prompt: str) -> str:
         """Send prompt to current provider and return text response."""
         import httpx
-        if self._cfg.provider in ("ollama", "meta"):
+        provider = self._cfg.provider
+
+        if provider in ("ollama", "meta"):
             r = httpx.post(
                 f"{self._cfg.ollama_url}/api/generate",
                 json={
@@ -201,11 +202,143 @@ class BenchmarkRunner:
             )
             r.raise_for_status()
             return r.json().get("response", "")
-        # For cloud providers, do a minimal chat call
+
+        if provider == "anthropic":
+            return self._query_anthropic(prompt)
+
+        if provider == "openai":
+            return self._query_openai(prompt)
+
+        if provider == "groq":
+            return self._query_groq(prompt)
+
+        if provider == "gemini":
+            return self._query_gemini(prompt)
+
         raise NotImplementedError(
-            f"Benchmark only supports Ollama. Current provider: {self._cfg.provider}. "
-            "Run /route local-only then /benchmark."
+            f"Benchmark does not support provider '{provider}'. "
+            "Supported: ollama, anthropic, openai, groq, gemini."
         )
+
+    def _chat_model(self) -> str:
+        """Return the best available model name for chat benchmarking."""
+        return self._cfg.chat_model or self._cfg.ollama_model or "default"
+
+    def _query_anthropic(self, prompt: str) -> str:
+        """POST to Anthropic Messages API and return the text reply."""
+        import httpx
+
+        from app.core.secret_store import get_api_key
+        api_key = get_api_key("anthropic")
+        if not api_key:
+            raise RuntimeError(
+                "No Anthropic API key stored. Use /setup or /provider anthropic."
+            )
+        model = self._chat_model()
+        r = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": 400,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=60.0,
+        )
+        r.raise_for_status()
+        data = r.json()
+        content = data.get("content", [])
+        return content[0].get("text", "") if content else ""
+
+    def _query_openai(self, prompt: str) -> str:
+        """POST to OpenAI Chat Completions API and return the text reply."""
+        import httpx
+
+        from app.core.secret_store import get_api_key
+        api_key = get_api_key("openai")
+        if not api_key:
+            raise RuntimeError(
+                "No OpenAI API key stored. Use /setup or /provider openai."
+            )
+        model = self._chat_model()
+        r = httpx.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": 400,
+                "temperature": 0.1,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=60.0,
+        )
+        r.raise_for_status()
+        choices = r.json().get("choices", [])
+        return choices[0]["message"]["content"] if choices else ""
+
+    def _query_groq(self, prompt: str) -> str:
+        """POST to Groq's OpenAI-compatible API and return the text reply."""
+        import httpx
+
+        from app.core.secret_store import get_api_key
+        api_key = get_api_key("groq")
+        if not api_key:
+            raise RuntimeError(
+                "No Groq API key stored. Use /setup or /provider groq."
+            )
+        model = self._chat_model()
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": 400,
+                "temperature": 0.1,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=60.0,
+        )
+        r.raise_for_status()
+        choices = r.json().get("choices", [])
+        return choices[0]["message"]["content"] if choices else ""
+
+    def _query_gemini(self, prompt: str) -> str:
+        """POST to Gemini generateContent API and return the text reply."""
+        import httpx
+
+        from app.core.secret_store import get_api_key
+        api_key = get_api_key("gemini")
+        if not api_key:
+            raise RuntimeError(
+                "No Gemini API key stored. Use /setup or /provider gemini."
+            )
+        model = self._chat_model()
+        r = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            params={"key": api_key},
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 400, "temperature": 0.1},
+            },
+            timeout=60.0,
+        )
+        r.raise_for_status()
+        candidates = r.json().get("candidates", [])
+        if not candidates:
+            return ""
+        parts = candidates[0].get("content", {}).get("parts", [])
+        return parts[0].get("text", "") if parts else ""
 
     def _compute_score(self, results: list[TaskResult]) -> int:
         task_map = {t["name"]: t["weight"] for t in self.TASKS}

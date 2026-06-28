@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import json
 import logging
 import os
 import re
+import sys
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,8 +28,15 @@ _SECRET_FIELD_SUBSTRINGS = (
 
 _SECRET_VALUE_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
+    re.compile(r"sk-proj-[A-Za-z0-9\-]{40,}"),
     re.compile(r"AIza[A-Za-z0-9_\-]{35}"),
     re.compile(r"gsk_[A-Za-z0-9]{20,}"),
+    re.compile(r"ghp_[A-Za-z0-9]{36}"),
+    re.compile(r"gho_[A-Za-z0-9]{36}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{82}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"hf_[A-Za-z0-9]{34}"),
+    re.compile(r"Bearer\s+[A-Za-z0-9._\-]{20,}"),
 )
 
 
@@ -43,7 +52,7 @@ def _redact_fields(fields: dict) -> dict:
 
     Any field whose name contains a known secret keyword is replaced with
     '<redacted>' so that API keys, passwords, and tokens are never written
-    to the on-disk audit log.
+    to the on-disk audit log.  Also recursively redacts nested dicts/lists.
     """
     safe: dict = {}
     for k, v in fields.items():
@@ -52,9 +61,22 @@ def _redact_fields(fields: dict) -> dict:
             safe[k] = "<redacted>"
         elif isinstance(v, str):
             safe[k] = _redact(v)
+        elif isinstance(v, dict):
+            safe[k] = _redact_fields(v)
+        elif isinstance(v, list):
+            safe[k] = [_redact(i) if isinstance(i, str) else i for i in v]
         else:
             safe[k] = v
     return safe
+
+
+def _set_log_permissions(path: Path) -> None:
+    """Restrict *path* to owner read/write only (mode 0o600) on POSIX systems."""
+    if sys.platform != "win32":
+        try:
+            os.chmod(path, 0o600)
+        except OSError as exc:
+            _logger.debug("audit: chmod failed on %s: %s", path, exc)
 
 
 def _rotate_if_needed() -> None:
@@ -63,9 +85,10 @@ def _rotate_if_needed() -> None:
             return
         if _LOG_PATH.stat().st_size < _MAX_BYTES:
             return
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         rotated = _LOG_PATH.with_suffix(f".log.{ts}")
         _LOG_PATH.rename(rotated)
+        _set_log_permissions(rotated)
         siblings = sorted(_LOG_PATH.parent.glob("audit.log.*"))
         for old in siblings[:-_MAX_KEEP]:
             try:
@@ -78,7 +101,7 @@ def _rotate_if_needed() -> None:
 
 def log_event(event_type: str, **fields: Any) -> None:
     record = {
-        "ts":    datetime.now(timezone.utc).isoformat(),
+        "ts":    datetime.now(UTC).isoformat(),
         "pid":   os.getpid(),
         "event": event_type,
     }
@@ -95,8 +118,11 @@ def log_event(event_type: str, **fields: Any) -> None:
         try:
             _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             _rotate_if_needed()
+            file_existed = _LOG_PATH.exists()
             with open(_LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(line)
+            if not file_existed:
+                _set_log_permissions(_LOG_PATH)
         except OSError as exc:
             _logger.debug("audit log write failed: %s", exc)
 

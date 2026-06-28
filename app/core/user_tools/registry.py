@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 REGISTRY_PATH = Path.home() / ".ilx_cli" / "user_tools_registry.json"
 
@@ -109,7 +108,7 @@ class UserToolRegistry:
             return True
         return False
 
-    def get(self, name: str) -> Optional[UserTool]:
+    def get(self, name: str) -> UserTool | None:
         """Return the UserTool for *name*, or None if not found."""
         return self._tools.get(name)
 

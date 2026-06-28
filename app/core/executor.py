@@ -1,17 +1,18 @@
 # DEPRECATED: superseded by codex/app/runner.py — kept for reference only, not imported anywhere
 from __future__ import annotations
+
 import os
 import subprocess
 import sys
 import threading
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
-from queue import Queue, Empty
-from typing import Generator, TYPE_CHECKING
+from queue import Empty, Queue
+from typing import TYPE_CHECKING
 
 from app.core.audit import log_command, log_file_op
 from app.core.permissions import FileOperation, PermissionEngine
-from app.utils.file_utils import compute_diff, safe_resolve
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
@@ -55,7 +56,7 @@ class ExecutorEvent:
 
 
 class LocalExecutor:
-    def __init__(self, config: "AppConfig", permission_engine: PermissionEngine):
+    def __init__(self, config: AppConfig, permission_engine: PermissionEngine):
         self._config   = config
         self._perms    = permission_engine
         self._proc: subprocess.Popen | None = None

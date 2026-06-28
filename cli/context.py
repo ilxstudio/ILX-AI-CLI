@@ -1,12 +1,15 @@
 """Context management — @path expansion, workspace tree, system prompt assembly."""
 from __future__ import annotations
 
+import functools
 import re
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
+    from app.core.hybrid_retriever import HybridRetriever
 
 _TEXT_EXTS = {
     ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs",
@@ -30,9 +33,19 @@ SKIP_DIRS = {
 _MAX_FILE_CHARS  = 8_000
 _MAX_TOTAL_CHARS = 40_000
 
+@functools.lru_cache(maxsize=256)
+def _cached_token_estimate(length: int, prefix_hash: int) -> int:
+    """Cached inner computation for estimate_tokens."""
+    return max(1, length // 4)
+
+
 def estimate_tokens(text: str) -> int:
-    """Rough token estimate: characters // 4 (≈ 1 token per 4 chars for English)."""
-    return max(1, len(text) // 4)
+    """Rough token estimate: characters // 4 (≈ 1 token per 4 chars for English).
+
+    Caches on (len, hash-of-first-100-chars) to avoid hashing huge strings while
+    still skipping redundant arithmetic for repeated identical inputs.
+    """
+    return _cached_token_estimate(len(text), hash(text[:100]))
 
 
 _AT_PATH_RE     = re.compile(r'@"([^"]+)"|@\'([^\']+)\'|@(\S+)')
@@ -48,24 +61,51 @@ _QUESTION_RE    = re.compile(
 class ContextManager:
     """Builds and injects file/workspace context into prompts."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
         self._repo_map = None
+        self._repo_map_block: str = ""        # cached result updated in background
+        self._repo_map_lock = threading.Lock()
+        self._hybrid: HybridRetriever | None = None  # injected via set_index()
         self._refresh_repo_map()
+
+    def set_index(self, retriever: HybridRetriever) -> None:
+        """Inject a HybridRetriever so build_system_prompt() can include project symbols."""
+        self._hybrid = retriever
 
     def set_workspace(self, workspace: str) -> None:
         self._cfg.working_folder = workspace
         self._refresh_repo_map()
 
     def _refresh_repo_map(self) -> None:
-        if self._cfg.working_folder:
+        wf = self._cfg.working_folder
+        if wf and Path(wf).is_dir():
             try:
                 from app.core.repo_map import RepoMap
-                self._repo_map = RepoMap(self._cfg.working_folder)
+                self._repo_map = RepoMap(wf)
+                self._schedule_repo_map_rebuild()
             except Exception:
                 self._repo_map = None
         else:
             self._repo_map = None
+
+    def _schedule_repo_map_rebuild(self) -> None:
+        """Rebuild the repo map in a daemon background thread."""
+        def _build() -> None:
+            if self._repo_map is None:
+                return
+            if not Path(self._cfg.working_folder).exists():
+                return
+            try:
+                self._repo_map.build()
+                block = self._repo_map.to_prompt_block()
+                with self._repo_map_lock:
+                    self._repo_map_block = block
+            except Exception as exc:
+                import logging
+                logging.getLogger("ilx_cli.context").debug("repo map bg build error: %s", exc)
+        t = threading.Thread(target=_build, daemon=True, name="repo-map-build")
+        t.start()
 
     def read_path(self, path: Path, label: str | None = None) -> str:
         if not path.exists():
@@ -170,7 +210,7 @@ class ContextManager:
 
     def workspace_tree(self, max_chars: int = 2000) -> str:
         root = Path(self._cfg.working_folder) if self._cfg.working_folder else None
-        if not root or not root.exists():
+        if not root or not root.is_dir():
             return ""
         lines: list[str] = []
         # Sort by depth first (shallow files before nested), then by name so
@@ -213,14 +253,24 @@ class ContextManager:
             )
 
         if self._repo_map is not None:
+            with self._repo_map_lock:
+                map_block = self._repo_map_block
+            if map_block:
+                base += "\n\n" + map_block
+            # Trigger a background refresh for the next call
+            self._schedule_repo_map_rebuild()
+
+        # Inject project symbols from HybridRetriever when index exists
+        if self._hybrid is not None:
             try:
-                self._repo_map.build()
-                map_block = self._repo_map.to_prompt_block()
-                if map_block:
-                    base += "\n\n" + map_block
+                index_path = Path(self._cfg.working_folder) / ".project_index" if self._cfg.working_folder else None
+                if index_path is None or index_path.exists():
+                    symbols_ctx = self._hybrid.query("", top_k=5, max_chars=1500)
+                    if symbols_ctx:
+                        base += "\n\n[Project symbols]\n" + symbols_ctx
             except Exception as exc:
-                import logging
-                logging.getLogger("ilx_cli.context").debug("repo map error: %s", exc)
+                import logging as _logging
+                _logging.getLogger("ilx_cli.context").debug("hybrid retriever query error: %s", exc)
 
         try:
             from app.core import git_helper
@@ -256,7 +306,7 @@ class ContextManager:
     def describe_current(self, history: list[dict], pinned: list[dict],
                          rag=None) -> None:
         """Print a summary of what's currently in the LLM context window."""
-        from cli.display import BOLD, DIM, CYAN, GREEN, YELLOW, RESET
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
         print(f"\n{BOLD}Context Window Stats:{RESET}")
 
         # System prompt

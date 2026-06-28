@@ -18,13 +18,13 @@ class WorkspaceMediaMixin:
     host class ``WorkspaceCommands``).
     """
 
-    cfg: "AppConfig"
+    cfg: AppConfig
 
     # ── /readme ───────────────────────────────────────────────────────────────
 
     def cmd_readme(self) -> None:
         """Generate a README.md for the current workspace using the LLM."""
-        from cli.display import DIM, GREEN, RED, YELLOW, CYAN, RESET
+        from cli.display import CYAN, DIM, GREEN, RED, RESET, YELLOW
         from codex.app.llm_client import get_llm_client
         wf = self.cfg.working_folder
         if not wf:
@@ -81,8 +81,8 @@ class WorkspaceMediaMixin:
 
         Reads PDF, DOCX, XLSX, or PNG and optionally writes a converted output.
         """
-        from cli.display import DIM, GREEN, RED, YELLOW, CYAN, BOLD, RESET
         from app.core import file_converter
+        from cli.display import CYAN, DIM, GREEN, RED, RESET, YELLOW
 
         _EXT_READERS = {
             ".pdf":  file_converter.read_pdf,
@@ -93,8 +93,8 @@ class WorkspaceMediaMixin:
 
         if not args:
             print(f"{YELLOW}Usage: /convert <input_file> [output_file]{RESET}")
-            print(f"  Supported input formats: .pdf .docx .xlsx .png")
-            print(f"  Example: /convert report.pdf report.txt")
+            print("  Supported input formats: .pdf .docx .xlsx .png")
+            print("  Example: /convert report.pdf report.txt")
             return
 
         in_path_raw = args[0]
@@ -234,8 +234,8 @@ class WorkspaceMediaMixin:
 
     def cmd_fetch(self, args: list[str]) -> None:
         """/fetch <url> [save]  — fetch a URL and display the page text."""
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
         from app.core import web_fetch
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 
         if not args:
             print(f"  {YELLOW}Usage: /fetch <url> [save]{RESET}")
@@ -288,8 +288,8 @@ class WorkspaceMediaMixin:
 
     def cmd_tool(self, args: list[str]) -> None:
         """/tool list|create|run — manage dynamic Python tools."""
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, CYAN, RESET
         from app.core.tool_builder import ToolBuilder
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
         from codex.app.llm_client import get_llm_client
 
         sub = args[0].lower() if args else "list"

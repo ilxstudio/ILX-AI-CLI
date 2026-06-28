@@ -14,14 +14,14 @@ if TYPE_CHECKING:
 class AnalysisCommands:
     """Handles static-analysis and security slash commands."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     def _wf(self) -> str | None:
         return self.cfg.working_folder or None
 
     def _require_workspace(self) -> str | None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
         wf = self._wf()
         if not wf:
             print(f"{YELLOW}No workspace set. Use /workspace first.{RESET}")
@@ -30,7 +30,7 @@ class AnalysisCommands:
     # ── /complexity ───────────────────────────────────────────────────────────
 
     def cmd_complexity(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -72,7 +72,7 @@ class AnalysisCommands:
     # ── /deadcode ─────────────────────────────────────────────────────────────
 
     def cmd_deadcode(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -107,7 +107,7 @@ class AnalysisCommands:
     # ── /bandit ───────────────────────────────────────────────────────────────
 
     def cmd_bandit(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return
@@ -147,7 +147,7 @@ class AnalysisCommands:
     # ── /precommit ────────────────────────────────────────────────────────────
 
     def cmd_precommit(self, args: list[str]) -> None:
-        from cli.display import DIM, GREEN, RED, YELLOW, RESET
+        from cli.display import DIM, GREEN, RED, RESET, YELLOW
         wf = self._require_workspace()
         if not wf:
             return

@@ -6,7 +6,7 @@ E.g. '/rev' resolves to '/review' when no other command starts with 'rev'.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 _log = logging.getLogger("ilx_cli.command_registry")
 

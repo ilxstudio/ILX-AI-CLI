@@ -21,7 +21,7 @@ _log = logging.getLogger("ilx_cli.research_cmds")
 class ResearchCommands:
     """Handles /research sub-commands."""
 
-    def __init__(self, rag: "RAG") -> None:
+    def __init__(self, rag: RAG) -> None:
         self._rag = rag
 
     # ------------------------------------------------------------------
@@ -57,13 +57,12 @@ class ResearchCommands:
 
     def _cmd_fetch(self, args: list[str]) -> None:
         """Infer topics from the query, fetch docs, inject into RAG."""
-        from cli.display import BOLD, DIM, GREEN, YELLOW, CYAN, RESET
         from app.core.research_fetcher import (
-            infer_topics,
             fetch_research,
-            build_research_context,
             get_default_cache,
+            infer_topics,
         )
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
         query = " ".join(args)
         print(f"  {DIM}Inferring topics for: {query!r}...{RESET}")
@@ -110,8 +109,8 @@ class ResearchCommands:
 
     def _cmd_list(self) -> None:
         """List all known research topics."""
-        from cli.display import BOLD, CYAN, DIM, RESET
         from app.core.research_fetcher import RESEARCH_SOURCES
+        from cli.display import BOLD, CYAN, DIM, RESET
 
         print(f"\n{BOLD}Available research topics:{RESET}")
         for topic, urls in sorted(RESEARCH_SOURCES.items()):
@@ -123,8 +122,8 @@ class ResearchCommands:
 
     def _cmd_clear(self) -> None:
         """Clear the research cache."""
-        from cli.display import GREEN, DIM, RESET
         from app.core.research_fetcher import get_default_cache
+        from cli.display import DIM, GREEN, RESET
 
         cache = get_default_cache()
         removed = cache.clear()
@@ -132,8 +131,8 @@ class ResearchCommands:
 
     def _cmd_stats(self) -> None:
         """Show research cache statistics."""
-        from cli.display import BOLD, CYAN, DIM, RESET
         from app.core.research_fetcher import get_default_cache
+        from cli.display import BOLD, CYAN, DIM, RESET
 
         cache = get_default_cache()
         stats = cache.stats()
@@ -154,7 +153,7 @@ class ResearchCommands:
     # ------------------------------------------------------------------
 
     def _print_usage(self) -> None:
-        from cli.display import CYAN, YELLOW, DIM, RESET
+        from cli.display import CYAN, DIM, RESET, YELLOW
         print(
             f"  {YELLOW}Usage:{RESET}\n"
             f"    {CYAN}/research <query>{RESET}   — fetch docs for a topic, inject into context\n"

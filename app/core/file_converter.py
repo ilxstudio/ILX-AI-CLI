@@ -36,9 +36,9 @@ def write_pdf(path: str, text: str) -> dict:
     Returns {"ok", "error"}.
     """
     try:
-        from reportlab.platypus import SimpleDocTemplate, Paragraph
-        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate
     except ImportError:
         return {"ok": False,
                 "error": "reportlab not installed — run: pip install reportlab"}

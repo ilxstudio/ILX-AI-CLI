@@ -18,7 +18,6 @@ import math
 import sqlite3
 import urllib.error
 import urllib.request
-import json as _json
 from pathlib import Path
 
 from app.core.rag import (
@@ -151,7 +150,7 @@ class EmbeddingClient:
         ``{"model": model, "prompt": text}``.
         """
         endpoint = f"{self._url}/api/embeddings"
-        payload = _json.dumps({"model": self._model, "prompt": text}).encode()
+        payload = json.dumps({"model": self._model, "prompt": text}).encode()
         req = urllib.request.Request(
             endpoint,
             data=payload,
@@ -160,7 +159,7 @@ class EmbeddingClient:
         )
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-                body = _json.loads(resp.read())
+                body = json.loads(resp.read())
             return body.get("embedding")
         except Exception as exc:
             _log.debug("EmbeddingClient.embed failed: %s", exc)
@@ -178,7 +177,7 @@ class EmbeddingClient:
         if not texts:
             return []
         endpoint = f"{self._url}/api/embed"
-        payload = _json.dumps({"model": self._model, "input": texts}).encode()
+        payload = json.dumps({"model": self._model, "input": texts}).encode()
         req = urllib.request.Request(
             endpoint,
             data=payload,
@@ -187,7 +186,7 @@ class EmbeddingClient:
         )
         try:
             with urllib.request.urlopen(req, timeout=self._timeout * len(texts)) as resp:
-                body = _json.loads(resp.read())
+                body = json.loads(resp.read())
             embeddings = body.get("embeddings", [])
             if len(embeddings) == len(texts):
                 return [e if e else None for e in embeddings]
@@ -382,7 +381,7 @@ class SemanticRAG(RAG):
 # ── Factory ──────────────────────────────────────────────────────────────────
 
 
-def get_rag(ollama_url: str = "http://localhost:11434") -> "SemanticRAG | RAG":
+def get_rag(ollama_url: str = "http://localhost:11434") -> SemanticRAG | RAG:
     """Return a :class:`SemanticRAG` when Ollama is reachable, else :class:`RAG`.
 
     The ping check is a lightweight GET to ``/api/tags`` (no model load).

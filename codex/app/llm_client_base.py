@@ -75,7 +75,7 @@ def _retry_with_backoff(
             should_retry = True
             wait = 0
             try:
-                from app.core.error_classifier import classify_error, ErrorClass
+                from app.core.error_classifier import classify_error
                 classified = classify_error(exc, provider=provider)
                 should_retry = classified.should_retry
                 # cap retry_after at 60s here; absolute cap applied below
@@ -118,7 +118,7 @@ def _call_with_retry(fn, *, provider: str = "", max_retries: int = 3, cloud: boo
     retried — cloud providers should fail-fast so callers can surface actionable
     errors quickly rather than hanging for multiple retry cycles.
     """
-    from app.core.error_classifier import classify_error, ErrorClass
+    from app.core.error_classifier import classify_error
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:

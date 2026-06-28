@@ -4,6 +4,7 @@ Kept in a separate file so that llm_client.py stays under 700 lines.
 Import everything from codex.app.llm_client for a unified surface.
 """
 from __future__ import annotations
+
 import json
 import uuid
 
@@ -212,46 +213,63 @@ def get_client(ollama_url: str, ollama_model: str):
     return OllamaClient(model=ollama_model, base_url=ollama_url)
 
 
+def _build_single_client(provider: str, model: str, cfg) -> BaseLLMClient:
+    """Build one LLM client for *provider* using *model* and cfg for URL/key lookup."""
+    from app.core import secret_store
+    from codex.app.llm_client_base import OllamaClient
+    from codex.app.llm_client_providers import AnthropicClient, OpenAIClient
+
+    if provider == "anthropic":
+        key = secret_store.get_api_key("anthropic") or secret_store.get_api_key() or ""
+        return AnthropicClient(model=model or AnthropicClient.DEFAULT_MODEL, api_key=key)
+    elif provider == "openai":
+        key = secret_store.get_api_key("openai") or secret_store.get_api_key() or ""
+        return OpenAIClient(model=model or OpenAIClient.DEFAULT_MODEL, api_key=key)
+    elif provider == "groq":
+        key = secret_store.get_api_key("groq") or secret_store.get_api_key() or ""
+        return GroqClient(model=model or GroqClient.DEFAULT_MODEL, api_key=key)
+    elif provider == "gemini":
+        key = secret_store.get_api_key("gemini") or secret_store.get_api_key() or ""
+        return GeminiClient(model=model or GeminiClient.DEFAULT_MODEL, api_key=key)
+    elif provider == "meta":
+        meta_model = model if model else "llama3.2"
+        return OllamaClient(model=meta_model, base_url=cfg.ollama_url)
+    else:  # ollama (default)
+        return OllamaClient(model=model, base_url=cfg.ollama_url)
+
+
 def get_llm_client(cfg) -> BaseLLMClient:
     """Factory: return the right LLM client based on cfg.provider.
 
     Supported providers:
       ollama     — local Ollama server (default)
-      anthropic  — Anthropic Claude (claude-sonnet-4-6, etc.)
-      openai     — OpenAI ChatGPT (gpt-4o, gpt-4o-mini)
-      groq       — Groq LPU cloud (llama-3.3-70b-versatile, mixtral-8x7b)
-      gemini     — Google Gemini (gemini-1.5-flash-latest, gemini-1.5-pro-latest)
-      meta       — Meta LLaMA via Ollama (llama3.2, llama3.1, etc.)
+      anthropic  — Anthropic (cloud)
+      openai     — OpenAI (cloud)
+      groq       — Groq LPU cloud
+      gemini     — Google Gemini (cloud)
+      meta       — Meta LLaMA via local Ollama
+
+    When ``cfg.fallback_providers`` is non-empty, returns a ``FallbackLLMClient``
+    that tries the primary provider first, then each fallback in order.
     """
-    from app.core import secret_store
-    from codex.app.llm_client_base import OllamaClient
-    from codex.app.llm_client_providers import AnthropicClient, OpenAIClient
     provider = getattr(cfg, "provider", "ollama")
     model = cfg.ollama_model
+    primary = _build_single_client(provider, model, cfg)
 
-    if provider == "anthropic":
-        key = secret_store.get_api_key("anthropic") or secret_store.get_api_key() or ""
-        return AnthropicClient(model=model or AnthropicClient.DEFAULT_MODEL, api_key=key)
+    fallback_providers: list[str] = getattr(cfg, "fallback_providers", []) or []
+    if not fallback_providers:
+        return primary
 
-    elif provider == "openai":
-        key = secret_store.get_api_key("openai") or secret_store.get_api_key() or ""
-        return OpenAIClient(model=model or OpenAIClient.DEFAULT_MODEL, api_key=key)
-
-    elif provider == "groq":
-        key = secret_store.get_api_key("groq") or secret_store.get_api_key() or ""
-        return GroqClient(model=model or GroqClient.DEFAULT_MODEL, api_key=key)
-
-    elif provider == "gemini":
-        key = secret_store.get_api_key("gemini") or secret_store.get_api_key() or ""
-        return GeminiClient(model=model or GeminiClient.DEFAULT_MODEL, api_key=key)
-
-    elif provider == "meta":
-        # Meta LLaMA models run locally via Ollama — pick a sensible default
-        meta_model = model if model else "llama3.2"
-        return OllamaClient(model=meta_model, base_url=cfg.ollama_url)
-
-    else:  # ollama (default)
-        return OllamaClient(model=model, base_url=cfg.ollama_url)
+    from codex.app.llm_client_fallback import FallbackLLMClient
+    clients: list[BaseLLMClient] = [primary]
+    for fp in fallback_providers:
+        try:
+            clients.append(_build_single_client(fp, "", cfg))
+        except Exception:
+            pass  # skip badly-configured fallback providers silently
+    if len(clients) == 1:
+        return primary
+    return FallbackLLMClient(clients)
 
 
 def get_chat_llm_client(cfg) -> BaseLLMClient:

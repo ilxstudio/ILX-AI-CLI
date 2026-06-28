@@ -3,14 +3,36 @@ from __future__ import annotations
 
 import os
 import socket
-import httpx
 from html.parser import HTMLParser
 from urllib.parse import urlparse
+
+import httpx
 
 _MAX_TEXT = 50_000
 _SKIP_TAGS = {"script", "style", "noscript", "iframe", "object", "embed", "svg", "canvas"}
 # Void elements that appear in _SKIP_TAGS but never have a closing tag — handled separately
 _VOID_SKIP_TAGS = {"meta", "link"}
+
+# ── Persistent HTTP client ────────────────────────────────────────────────────
+# A single shared client with connection pooling.  Reusing connections avoids
+# the per-call TCP handshake overhead when fetching multiple URLs in a session.
+
+_HTTP_CLIENT: httpx.Client | None = None
+
+
+def _get_http_client() -> httpx.Client:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None or _HTTP_CLIENT.is_closed:
+        _HTTP_CLIENT = httpx.Client(
+            follow_redirects=True,
+            limits=httpx.Limits(
+                max_keepalive_connections=20,
+                max_connections=50,
+                keepalive_expiry=30.0,
+            ),
+            timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0),
+        )
+    return _HTTP_CLIENT
 
 
 class _TextExtractor(HTMLParser):
@@ -137,11 +159,11 @@ def fetch_url(url: str, timeout: int = 15) -> dict:
     }
 
     try:
-        with httpx.Client(follow_redirects=True, timeout=timeout) as client:
-            resp = client.get(url, headers=headers)
-            resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "")
-            raw_bytes = resp.content[:1024 * 512]  # 512 KB cap
+        client = _get_http_client()
+        resp = client.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        content_type = resp.headers.get("content-type", "")
+        raw_bytes = resp.content[:1024 * 512]  # 512 KB cap
     except httpx.HTTPStatusError as exc:
         return {**_empty, "error": f"HTTP {exc.response.status_code}: {exc.response.reason_phrase}"}
     except httpx.RequestError as exc:

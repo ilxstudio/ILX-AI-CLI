@@ -34,14 +34,13 @@ class UpgradeCommand:
         ("go.mod",           "",        "go"),
     ]
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     def cmd_upgrade(self, args: list[str]) -> None:
-        from cli.display import BOLD, DIM, GREEN, YELLOW, CYAN, RESET
-
         # Late-import so EXTRA_INIT_TEMPLATES and workspace _INIT_TEMPLATES are merged
         from cli.commands.workspace_cmds import _INIT_TEMPLATES
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
         wf = self.cfg.working_folder
         if not wf:

@@ -81,7 +81,7 @@ _FINDING_RE = re.compile(
 class ReviewRunner:
     """Runs a structured code review against a diff or set of files."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     # ── public API ────────────────────────────────────────────────────────

@@ -16,8 +16,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from app.core import process_runner
-
 _log = logging.getLogger("ilx_cli.mcp_stdio")
 
 _MCP_SERVERS_FILE = Path.home() / ".ilx_cli" / "mcp_servers.json"
@@ -206,7 +204,7 @@ class StdioMCPManager:
         self._connections: dict[str, StdioMCPConnection] = {}
 
     @classmethod
-    def from_config(cls, config_path: Path = _MCP_SERVERS_FILE) -> "StdioMCPManager":
+    def from_config(cls, config_path: Path = _MCP_SERVERS_FILE) -> StdioMCPManager:
         """Load server specs from disk. Returns an empty manager if file absent."""
         if not config_path.exists():
             return cls({})

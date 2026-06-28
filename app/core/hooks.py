@@ -26,7 +26,6 @@ import shlex
 import string
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from app.core import process_runner
 
@@ -35,6 +34,21 @@ _CFG_PATH = Path.home() / ".ilx_cli" / "hooks.json"
 _DEFAULT_TIMEOUT = 10
 
 KNOWN_EVENTS = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"}
+
+# Centralized sensitive environment variable prefix list.
+# Importable by other modules: ``from app.core.hooks import _SENSITIVE_ENV_PREFIXES``
+_SENSITIVE_ENV_PREFIXES: tuple[str, ...] = (
+    "ANTHROPIC_", "OPENAI_", "GROQ_", "GEMINI_", "HUGGINGFACE_", "HF_",
+    "AWS_", "AZURE_", "GITHUB_TOKEN", "SENDGRID_", "STRIPE_", "TWILIO_",
+    "ILX_KEY", "GOOGLE_", "GCP_", "GCLOUD_", "DOCKER_", "GITLAB_",
+    "BITBUCKET_", "DATABASE_", "POSTGRES_", "MYSQL_", "REDIS_", "MAILGUN_",
+    "ILX_",
+)
+
+# Shell metacharacters that must not appear in individual hook command arguments.
+_SHELL_METACHARACTERS = frozenset(";|&`$()<>")
+
+_HOME = Path.home()
 
 
 @dataclass
@@ -147,17 +161,18 @@ def _expand(cmd: str, payload: dict) -> str:
 
 
 def _sanitized_env() -> dict[str, str]:
+    """Return a sanitized copy of ``os.environ`` for hook subprocesses.
+
+    Uses ``_SENSITIVE_ENV_PREFIXES`` to strip API keys, tokens, and other
+    secrets before passing environment variables to hook commands.
+    """
     env: dict[str, str] = {}
-    bad_prefixes = (
-        "ANTHROPIC_", "OPENAI_", "GOOGLE_", "AZURE_", "AWS_", "GCP_",
-        "GITHUB_", "GITLAB_", "STRIPE_", "TWILIO_", "ILX_",
-    )
-    bad_suffixes = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
+    _bad_suffixes = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
     for k, v in os.environ.items():
         upper = k.upper()
-        if upper.startswith(bad_prefixes):
+        if upper.startswith(_SENSITIVE_ENV_PREFIXES):
             continue
-        if any(upper.endswith(s) for s in bad_suffixes):
+        if any(upper.endswith(s) for s in _bad_suffixes):
             continue
         if upper in {"API_KEY", "APIKEY", "PASSWORD", "PASSWD"}:
             continue
@@ -165,9 +180,56 @@ def _sanitized_env() -> dict[str, str]:
     return env
 
 
+def _validate_hook_command(cmd: list[str]) -> tuple[bool, str]:
+    """Validate a hook command list before execution.
+
+    Returns ``(True, "")`` if the command is safe to run, or
+    ``(False, reason)`` if it should be rejected.
+
+    Checks performed:
+    - Rejects any argument containing shell metacharacters (;, |, &, etc.)
+    - Rejects executables that are absolute paths outside the user's home
+      directory or outside a directory on PATH (bare program names are allowed)
+    """
+    if not cmd:
+        return False, "empty command"
+
+    for i, arg in enumerate(cmd):
+        bad = _SHELL_METACHARACTERS.intersection(arg)
+        if bad:
+            chars = "".join(sorted(bad))
+            return False, (
+                f"argument {i} contains shell metacharacter(s) {chars!r}: {arg!r}"
+            )
+
+    executable = cmd[0]
+    # Only check paths — bare names (e.g. "git", "python") are resolved via PATH
+    if os.sep in executable or (os.altsep and os.altsep in executable):
+        exec_path = Path(executable)
+        if exec_path.is_absolute():
+            # Allow executables inside the user's home directory
+            try:
+                exec_path.relative_to(_HOME)
+            except ValueError:
+                # Not under home — check if it's on PATH
+                import shutil
+                if shutil.which(exec_path.name) != str(exec_path):
+                    return False, (
+                        f"executable is an absolute path outside home directory: {executable!r}"
+                    )
+
+    return True, ""
+
+
 def _run_hook(spec: _HookSpec, payload: dict) -> tuple[int, str]:
     cmd = _expand(spec.command, payload)
     args = shlex.split(cmd)
+
+    valid, reason = _validate_hook_command(args)
+    if not valid:
+        _log.warning("hook command rejected (security validation failed): %s — %s", spec.command, reason)
+        return 1, f"hook rejected: {reason}"
+
     r = process_runner.run(args, timeout=int(spec.timeout), env=_sanitized_env())
     if not r.ok and r.returncode == -1:
         if "Timed out" in r.stderr:

@@ -532,8 +532,11 @@ def test_ssh_parse_user_host():
 def test_cli_command_python_version(tmp_path, cfg):
     """run_command with 'python --version' returns 'Python' in the output."""
     from app.core.mcp_client import MCPClient
+    from app.core.config import PermissionMode
 
     cfg.working_folder = str(tmp_path)
+    _orig_mode = cfg.permission_mode
+    cfg.permission_mode = PermissionMode.AUTO_APPROVE
     client = MCPClient(cfg)
     client.register_builtin_tools()
 
@@ -556,6 +559,7 @@ def test_cli_command_python_version(tmp_path, cfg):
             "error": result.get("error", ""),
         },
     )
+    cfg.permission_mode = _orig_mode
     assert result["success"], f"run_command failed: {result.get('error')}, out={output[:200]!r}"
     assert "Python" in output, f"Expected 'Python' in output, got: {output[:200]!r}"
 
@@ -567,8 +571,11 @@ def test_cli_command_python_version(tmp_path, cfg):
 def test_cli_command_cross_platform(tmp_path, cfg):
     """Platform-appropriate directory-listing command succeeds."""
     from app.core.mcp_client import MCPClient
+    from app.core.config import PermissionMode
 
     cfg.working_folder = str(tmp_path)
+    _orig_mode = cfg.permission_mode
+    cfg.permission_mode = PermissionMode.AUTO_APPROVE
     client = MCPClient(cfg)
     client.register_builtin_tools()
 
@@ -600,6 +607,7 @@ def test_cli_command_cross_platform(tmp_path, cfg):
             "error": result.get("error", ""),
         },
     )
+    cfg.permission_mode = _orig_mode
     assert result["success"], (
         f"Cross-platform dir command failed on {platform.system()}: "
         f"{result.get('error')}, out={output[:300]!r}"

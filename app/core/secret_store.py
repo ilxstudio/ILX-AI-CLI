@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import logging
 
 import keyring
@@ -10,9 +11,38 @@ SERVICE = "ilx-cli"
 ACCOUNT = "api_key"
 ACCOUNT_LAST_USERNAME = "last_username"
 
+# Emitted at most once per process to avoid log spam.
+_KEYRING_WARNED: bool = False
+
 
 def _password_account(username: str) -> str:
     return f"password:{username}"
+
+
+def _warn_keyring_unavailable() -> None:
+    """Log a one-time WARNING when the keyring backend is not usable."""
+    global _KEYRING_WARNED
+    if not _KEYRING_WARNED:
+        _KEYRING_WARNED = True
+        _log.warning(
+            "Keyring unavailable — API keys will not be persisted securely. "
+            "Install a system keyring (e.g. Windows Credential Manager is used "
+            "automatically on Windows)."
+        )
+
+
+def is_keyring_available() -> bool:
+    """Return ``True`` if a real OS keyring backend is present and functional.
+
+    Callers can use this to display an appropriate warning to the user before
+    attempting to store or retrieve secrets.
+    """
+    try:
+        backend = keyring.get_keyring()
+    except Exception:
+        return False
+    name = backend.__class__.__name__
+    return "Keyring" not in name
 
 
 def keychain_available() -> bool:
@@ -39,6 +69,7 @@ def get_api_key(provider: str = "") -> str:
     try:
         value = keyring.get_password(SERVICE, account)
     except keyring.errors.NoKeyringError:
+        _warn_keyring_unavailable()
         return ""
     except Exception as exc:
         _log.debug("get_api_key(%s): %s", provider, exc)
@@ -55,6 +86,9 @@ def set_api_key(key: str, provider: str = "") -> bool:
     try:
         keyring.set_password(SERVICE, account, key)
         return True
+    except keyring.errors.NoKeyringError:
+        _warn_keyring_unavailable()
+        return False
     except Exception as exc:
         _log.warning("set_api_key(%s) failed: %s", provider, exc)
     return False

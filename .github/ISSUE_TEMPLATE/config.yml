@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/ilxstudio/ilx-ai-cli/discussions
+    about: Ask questions and discuss features in GitHub Discussions
+  - name: Security Vulnerability
+    url: https://github.com/ilxstudio/ilx-ai-cli/security/advisories/new
+    about: Report security vulnerabilities privately

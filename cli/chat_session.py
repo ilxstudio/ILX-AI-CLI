@@ -6,7 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING
 
-from app.core.error_classifier import classify_error, ErrorClass
+from app.core.error_classifier import ErrorClass, classify_error
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
@@ -28,7 +28,7 @@ _FALLBACK_TRIGGER = {
 class ChatSession:
     """Holds state and handles one round-trip in chat mode."""
 
-    def __init__(self, cfg: "AppConfig", ctx: "ContextManager") -> None:
+    def __init__(self, cfg: AppConfig, ctx: ContextManager) -> None:
         self.cfg            = cfg
         self.ctx            = ctx
         self.history:  list[dict] = []
@@ -96,7 +96,7 @@ class ChatSession:
     def _warn_context_usage(self, system: str, all_msgs: list[dict]) -> None:
         """Print a dim warning when the estimated context usage is high."""
         from cli.context import estimate_tokens
-        from cli.display import DIM, YELLOW, RESET
+        from cli.display import DIM, RESET, YELLOW
 
         num_ctx = getattr(self.cfg, "num_ctx", 4096)
         if not num_ctx:
@@ -120,9 +120,10 @@ class ChatSession:
     def send(self, raw: str) -> bool:
         """Send raw to the LLM in chat mode. Returns True on success."""
         import time
-        from cli.display import GREEN, RED, DIM, RESET
-        from app.core.spinner import Spinner
+
         from app.core import audit
+        from app.core.spinner import Spinner
+        from cli.display import DIM, GREEN, RED, RESET
         from codex.app.llm_client import get_chat_llm_client as get_llm_client
 
         if self.pending_paste:
@@ -136,7 +137,9 @@ class ChatSession:
         # ── Vision / multimodal image injection ───────────────────────────────
         provider = getattr(self.cfg, "provider", "ollama")
         from app.core.vision import (
-            extract_image_paths, build_multimodal_message, ollama_model_has_vision,
+            build_multimodal_message,
+            extract_image_paths,
+            ollama_model_has_vision,
         )
         image_paths = extract_image_paths(raw)
 
@@ -207,7 +210,7 @@ class ChatSession:
             # is a real tty, and the response actually looks like markdown.
             if sys.stdout.isatty():
                 try:
-                    from cli.rich_display import is_rich_available, _looks_like_markdown
+                    from cli.rich_display import _looks_like_markdown, is_rich_available
                     if is_rich_available() and _looks_like_markdown(full_response):
                         # Move cursor up past the streamed lines so we can
                         # replace them with the nicely-formatted version.
@@ -225,8 +228,8 @@ class ChatSession:
             usage = client.last_usage
             provider = getattr(self.cfg, "provider", "ollama")
             if usage.prompt_tokens or usage.completion_tokens:
-                from cli.display import estimate_cost, format_cost
                 from app.core.cost_tracker import tracker as _cost_tracker
+                from cli.display import estimate_cost, format_cost
                 cost = estimate_cost(provider, client.model,
                                      usage.prompt_tokens, usage.completion_tokens)
                 # Accumulate into session tracker regardless of display path
@@ -355,7 +358,7 @@ class ChatSession:
         which matches the interface expected by MCPClient.call(permission_cb=...).
         Tool names are mapped to permission kinds understood by PermissionEngine.
         """
-        from app.core.permissions import PermissionEngine, FileOperation
+        from app.core.permissions import FileOperation, PermissionEngine
 
         _TOOL_KIND_MAP = {
             "read_file":   "read",
@@ -447,11 +450,12 @@ class ChatSession:
                          t_start: float, audit) -> bool:
         """Non-streaming tool-use loop — up to 5 rounds of tool calls."""
         import time
-        from cli.display import GREEN, RED, DIM, CYAN, RESET
-        from app.core.spinner import Spinner
-        from app.core.tool_schema import BUILTIN_TOOL_DEFS
+
         import app.core.mcp_client as _mcp_mod
         import app.core.tool_result_formatter as fmt
+        from app.core.spinner import Spinner
+        from app.core.tool_schema import BUILTIN_TOOL_DEFS
+        from cli.display import CYAN, DIM, GREEN, RED, RESET
 
         provider = getattr(self.cfg, "provider", "ollama")
         mcp = _mcp_mod.MCPClient(cfg=self.cfg)
@@ -535,8 +539,8 @@ class ChatSession:
 
         usage = client.last_usage
         if usage.prompt_tokens or usage.completion_tokens:
-            from cli.display import estimate_cost, format_cost
             from app.core.cost_tracker import tracker as _cost_tracker
+            from cli.display import estimate_cost, format_cost
             cost = estimate_cost(provider, client.model,
                                  usage.prompt_tokens, usage.completion_tokens)
             # Accumulate into session tracker

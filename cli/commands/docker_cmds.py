@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
-from cli.display_compat import out, out_error, out_status, out_result
+from cli.display_compat import out, out_error, out_result, out_status
 
 _log = logging.getLogger("ilx_cli.docker")
 
@@ -152,13 +152,13 @@ _MULTISTAGE_TYPES = {"go", "rust", "react"}
 class DockerCommands:
     """Handles all /docker sub-commands."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
 
     # ── Public dispatcher ────────────────────────────────────────────────────
 
     def cmd_docker(self, args: list[str]) -> None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
         sub = args[0].lower() if args else "help"
         rest = args[1:] if len(args) > 1 else []
 
@@ -186,7 +186,7 @@ class DockerCommands:
     # ── /docker status ───────────────────────────────────────────────────────
 
     def _cmd_status(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, DIM, CYAN, RESET, BOLD
+        from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
 
         version_result = self._run_docker(
             ["info", "--format", "{{.ServerVersion}}"], capture=True
@@ -216,7 +216,7 @@ class DockerCommands:
     # ── /docker build [tag] ──────────────────────────────────────────────────
 
     def _cmd_build(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, DIM, RED, RESET
+        from cli.display import DIM, RESET, YELLOW
 
         wf = self._cfg.working_folder or "."
         root = Path(wf)
@@ -234,7 +234,7 @@ class DockerCommands:
     # ── /docker run [image] [-- args...] ────────────────────────────────────
 
     def _cmd_run(self, args: list[str]) -> None:
-        from cli.display import YELLOW, DIM, RESET
+        from cli.display import DIM, RESET, YELLOW
 
         if not args:
             out_error(f"{YELLOW}Usage: /docker run <image> [-- args...]{RESET}")
@@ -277,7 +277,7 @@ class DockerCommands:
     # ── /docker stop <container> ─────────────────────────────────────────────
 
     def _cmd_stop(self, args: list[str]) -> None:
-        from cli.display import GREEN, YELLOW, DIM, RESET
+        from cli.display import DIM, GREEN, RESET, YELLOW
 
         if not args:
             out_error(f"{YELLOW}Usage: /docker stop <container>{RESET}")
@@ -297,7 +297,7 @@ class DockerCommands:
     # ── /docker logs <container> [--tail N] ──────────────────────────────────
 
     def _cmd_logs(self, args: list[str]) -> None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
 
         if not args:
             out_error(f"{YELLOW}Usage: /docker logs <container> [--tail N]{RESET}")
@@ -322,7 +322,7 @@ class DockerCommands:
     # ── /docker pull <image> ─────────────────────────────────────────────────
 
     def _cmd_pull(self, args: list[str]) -> None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
 
         if not args:
             out_error(f"{YELLOW}Usage: /docker pull <image>{RESET}")
@@ -347,7 +347,7 @@ class DockerCommands:
     # ── /docker inspect <name> ───────────────────────────────────────────────
 
     def _cmd_inspect(self, args: list[str]) -> None:
-        from cli.display import YELLOW, DIM, RESET
+        from cli.display import DIM, RESET, YELLOW
 
         if not args:
             out_error(f"{YELLOW}Usage: /docker inspect <container_or_image>{RESET}")
@@ -374,7 +374,7 @@ class DockerCommands:
     # ── /docker scaffold [type] ──────────────────────────────────────────────
 
     def _cmd_scaffold(self, args: list[str]) -> None:
-        from cli.display import YELLOW, RESET
+        from cli.display import RESET, YELLOW
 
         project_type = args[0].lower() if args else "python"
         wf = self._cfg.working_folder or "."
@@ -393,7 +393,7 @@ class DockerCommands:
 
         Returns True on success, False if project_type is unknown.
         """
-        from cli.display import GREEN, YELLOW, DIM, CYAN, RESET
+        from cli.display import CYAN, DIM, GREEN, RESET, YELLOW
 
         project_type = project_type.lower()
         content = BEST_PRACTICE_DOCKERFILES.get(project_type)
@@ -429,7 +429,7 @@ class DockerCommands:
     # ── /docker compose [up|down|ps|logs] ───────────────────────────────────
 
     def _cmd_compose(self, args: list[str]) -> None:
-        from cli.display import YELLOW, DIM, RESET
+        from cli.display import DIM, RESET, YELLOW
 
         sub = args[0].lower() if args else "ps"
         wf = self._cfg.working_folder or "."
@@ -469,7 +469,7 @@ class DockerCommands:
     # ── /docker help ─────────────────────────────────────────────────────────
 
     def _cmd_help(self, args: list[str]) -> None:
-        from cli.display import BOLD, CYAN, DIM, RESET
+        from cli.display import BOLD, CYAN, RESET
 
         rows = [
             ("status",                     "Docker version, container count, image count"),
@@ -544,7 +544,7 @@ class DockerCommands:
             out_error(f"  {RED}Error: {exc}{RESET}")
 
     def _print_error(self, result: dict) -> None:
-        from cli.display import RED, DIM, RESET
+        from cli.display import DIM, RED, RESET
         out_error(f"  {RED}Docker error (code {result['returncode']}):{RESET}")
         if result.get("output"):
             for line in result["output"].strip().splitlines()[:20]:

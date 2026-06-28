@@ -9,7 +9,7 @@ import contextlib
 import json as _json
 import sys
 import threading
-from typing import Generator
+from collections.abc import Generator
 
 # ── Module-level rich-enable flag ─────────────────────────────────────────────
 # Can be toggled at runtime by /rich on|off without reimporting.

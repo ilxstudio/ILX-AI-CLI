@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 class ParseError(Exception):
@@ -199,5 +200,5 @@ class ResponseParser:
         ]
         command_to_run: str | None = data.get("command_to_run", None)
         if command_to_run is not None and not isinstance(command_to_run, str):
-            raise ParseError(f"'command_to_run' must be a string or null")
+            raise ParseError("'command_to_run' must be a string or null")
         return LLMResponse(summary=summary, files=files, command_to_run=command_to_run)

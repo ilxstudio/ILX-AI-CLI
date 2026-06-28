@@ -531,7 +531,7 @@ class TestHybridRetrieverEngine:
         count = retriever.index_folder(str(tmp_path))
         assert count >= 1
         results = retriever.query("authenticate")
-        assert isinstance(results, list)
+        assert isinstance(results, str)
 
     def test_stats_empty(self, tmp_path):
         from app.core.hybrid_retriever import HybridRetriever
@@ -620,11 +620,8 @@ class TestResearchRunnerEngine:
         cfg = MagicMock()
         cfg.ollama_url = "http://localhost:11434"
         runner = ResearchRunner(cfg)
-        chunks = [
-            RetrievedChunk(source="auth.py", content="def login(u, p): return True", score=0.9, kind="bm25"),
-        ]
         mock_retriever = MagicMock()
-        mock_retriever.query.return_value = chunks
+        mock_retriever.query.return_value = "[File: auth.py]\ndef login(u, p): return True\n"
         mock_retriever.stats.return_value = MagicMock(file_count=1)
         runner._retriever = mock_retriever
         with patch("codex.app.llm_client.get_llm_client", return_value=_fake_llm(
@@ -632,8 +629,6 @@ class TestResearchRunnerEngine:
         )):
             result = runner.query("what does login do")
         assert result.answer != ""
-        assert "auth.py" in result.files_used
-        assert result.chunks_used == 1
 
     def test_extract_follow_ups(self, tmp_path):
         from app.core.research_runner import ResearchRunner

@@ -9,11 +9,11 @@ import csv
 import io
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cli.display_compat import out, out_error, out_status, out_result
+from cli.display_compat import out, out_error, out_result, out_status
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
@@ -64,7 +64,7 @@ def _ts_to_date(ts: str) -> str:
 
 def _format_event_line(rec: dict, *, colors: bool = True) -> str:
     """Return a single human-readable line for one audit record."""
-    from cli.display import CYAN, BLUE, YELLOW, MAGENTA, RED, DIM, RESET
+    from cli.display import BLUE, CYAN, DIM, MAGENTA, RED, RESET, YELLOW
 
     event = rec.get("event", "unknown")
     ts    = _ts_to_hms(rec.get("ts", ""))
@@ -144,7 +144,7 @@ def audit_replay(args: list[str]) -> None:
         /audit replay 100       — last N events
         /audit replay today     — events from today only
     """
-    from cli.display import BOLD, DIM, CYAN, RESET
+    from cli.display import BOLD, CYAN, DIM, RESET
 
     filter_today = False
     limit = 50
@@ -164,7 +164,7 @@ def audit_replay(args: list[str]) -> None:
     records = _read_log_records()
 
     if filter_today:
-        today_str = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+        today_str = datetime.now(UTC).astimezone().strftime("%Y-%m-%d")
         records = [r for r in records if _ts_to_date(r.get("ts", "")) == today_str]
         heading = "today"
     else:
@@ -183,14 +183,14 @@ def audit_replay(args: list[str]) -> None:
 
 # ── /audit explain ────────────────────────────────────────────────────────────
 
-def audit_explain(args: list[str], cfg: "AppConfig") -> None:
+def audit_explain(args: list[str], cfg: AppConfig) -> None:
     """Send recent audit events to the LLM for a plain-English summary.
 
     Usage:
         /audit explain          — explain last 30 events
         /audit explain 50       — explain last N events
     """
-    from cli.display import BOLD, DIM, CYAN, RED, RESET
+    from cli.display import BOLD, CYAN, DIM, RESET
 
     limit = 30
     for arg in args:
@@ -247,8 +247,9 @@ def audit_explain(args: list[str], cfg: "AppConfig") -> None:
 
 def _rule_based_summary(records: list[dict]) -> None:
     """Print a simple rule-based summary when the LLM is unavailable."""
-    from cli.display import BOLD, DIM, CYAN, RESET
     from collections import Counter
+
+    from cli.display import BOLD, DIM, RESET
 
     counts: Counter = Counter(r.get("event", "unknown") for r in records)
     out(f"{BOLD}Event counts:{RESET}")

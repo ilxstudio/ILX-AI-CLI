@@ -1,8 +1,9 @@
 from __future__ import annotations
+
 import json
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from dataclasses import dataclass, asdict
 from typing import Any
 
 
@@ -26,7 +27,7 @@ class AgentLogger:
 
     def log(self, event: str, payload: dict[str, Any] | None = None) -> None:
         entry = LogEntry(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             attempt=self._attempt,
             event=event,
             payload=payload or {},
@@ -37,4 +38,4 @@ class AgentLogger:
 
 
 def generate_run_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return datetime.now(UTC).strftime("%Y%m%d_%H%M%S")

@@ -12,12 +12,12 @@ if TYPE_CHECKING:
 class MetricsCommands:
     """Provides the /metrics command for aggregate usage reporting."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     def cmd_metrics(self) -> None:
         """Parse audit log and display aggregate usage metrics."""
-        from cli.display import BOLD, DIM, CYAN, GREEN, RED, RESET
+        from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET
         log_path = Path.home() / ".ilx_cli" / "logs" / "audit.log"
         if not log_path.exists():
             print(f"  {DIM}No audit log found. Metrics are collected as you use the CLI.{RESET}")

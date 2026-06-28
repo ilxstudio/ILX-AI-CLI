@@ -1,14 +1,12 @@
 """CLI configuration — backed by ~/.ilx_cli/config.json."""
 from __future__ import annotations
 
-import json
 import logging
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from app.core import secret_store
 from app.core.json_store import JsonStore
 
 _log = logging.getLogger("ilx_cli.config")

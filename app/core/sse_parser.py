@@ -1,5 +1,6 @@
 # DEPRECATED: SSE parsing is now inline in codex/app/llm_client.py — kept for reference only
 from __future__ import annotations
+
 import json
 import logging
 from dataclasses import dataclass

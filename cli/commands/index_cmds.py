@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.core.config import AppConfig
 
+from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 from cli.display_compat import out, out_error
-from cli.display import BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET
 
 _log = logging.getLogger("ilx_cli.index_cmds")
 
@@ -17,7 +18,7 @@ _log = logging.getLogger("ilx_cli.index_cmds")
 class IndexCommands:
     """/index command handler."""
 
-    def __init__(self, cfg: "AppConfig") -> None:
+    def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
         self._retriever = None   # lazy init
 
@@ -47,16 +48,32 @@ class IndexCommands:
             return
 
         out(f"\n{BOLD}Building index for:{RESET} {DIM}{wf}{RESET}")
-        _indexed_count = 0
 
-        def progress(rel_path: str) -> None:
-            nonlocal _indexed_count
-            _indexed_count += 1
-            if _indexed_count % 10 == 0:
-                out(f"  {DIM}... {_indexed_count} files{RESET}")
+        # Pre-count source files so the progress bar can show a percentage.
+        _source_exts = {".py", ".js", ".ts", ".md", ".txt", ".json", ".yaml", ".yml",
+                        ".toml", ".cfg", ".ini", ".html", ".css", ".rs", ".go", ".java", ".c", ".cpp"}
+        _total = sum(
+            1 for p in Path(wf).rglob("*")
+            if p.is_file() and p.suffix.lower() in _source_exts
+            and ".git" not in p.parts
+        )
+        _current = 0
+        _bar_len = 30
+
+        def _progress(rel_path: str) -> None:
+            nonlocal _current
+            _current += 1
+            pct = int(_current / max(_total, 1) * 100)
+            filled = int(_bar_len * _current / max(_total, 1))
+            bar = "█" * filled + "░" * (_bar_len - filled)
+            name = Path(rel_path).name[:30]
+            sys.stdout.write(f"\r  [{bar}] {pct:3d}% — {name:<30}")
+            sys.stdout.flush()
 
         retriever = self._get_retriever()
-        count = retriever.index_folder(wf, on_progress=progress)
+        count = retriever.index_folder(wf, on_progress=_progress)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
         out(f"  {GREEN}[ok]{RESET} Indexed {count} file(s).\n")
 
     def _index_status(self, _args: list[str]) -> None:

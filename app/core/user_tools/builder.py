@@ -4,10 +4,11 @@ from __future__ import annotations
 import datetime
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
-from app.core.user_tools.registry import UserTool, UserToolRegistry, registry as _registry
+from app.core.user_tools.registry import UserTool, UserToolRegistry
+from app.core.user_tools.registry import registry as _registry
 from app.core.user_tools.validator import ToolValidator
 
 _log = logging.getLogger("ilx_cli.user_tools.builder")
@@ -89,7 +90,7 @@ class ToolBuilder:
         self,
         cfg,
         llm_client=None,
-        tool_registry: Optional[UserToolRegistry] = None,
+        tool_registry: UserToolRegistry | None = None,
     ) -> None:
         self.cfg = cfg
         self.llm = llm_client
@@ -140,10 +141,10 @@ class ToolBuilder:
         if use_research:
             try:
                 from app.core.research_fetcher import (
-                    infer_topics,
-                    fetch_research,
                     build_research_context,
+                    fetch_research,
                     get_default_cache,
+                    infer_topics,
                 )
                 topics = infer_topics(description, task_detail)
                 if topics:
@@ -189,7 +190,7 @@ class ToolBuilder:
         name: str,
         description: str,
         code: str,
-        permission_callback: Optional[Callable] = None,
+        permission_callback: Callable | None = None,
     ) -> dict:
         """Write tool source to disk after permission check.
 
@@ -228,7 +229,7 @@ class ToolBuilder:
         name: str,
         description: str,
         task_detail: str,
-        permission_callback: Optional[Callable] = None,
+        permission_callback: Callable | None = None,
         validate: bool = True,
         use_research: bool = False,
     ) -> dict:
@@ -267,10 +268,10 @@ class ToolBuilder:
             if use_research:
                 try:
                     from app.core.research_fetcher import (
-                        infer_topics,
-                        fetch_research,
                         build_research_context,
+                        fetch_research,
                         get_default_cache,
+                        infer_topics,
                     )
                     topics = infer_topics(description, task_detail)
                     if topics:
@@ -332,8 +333,8 @@ class ToolBuilder:
                 }
 
             # Run final validation to capture the ValidationResult object
-            import tempfile
             import os as _os
+            import tempfile
             validation = None
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".py", delete=False,
@@ -356,8 +357,8 @@ class ToolBuilder:
             validation = None
 
             if validate:
-                import tempfile
                 import os as _os
+                import tempfile
                 with tempfile.NamedTemporaryFile(
                     mode="w", suffix=".py", delete=False,
                     encoding="utf-8", prefix=f"ilx_tool_{name}_",
@@ -431,7 +432,7 @@ class ToolBuilder:
         self,
         name: str,
         new_code: str,
-        permission_callback: Optional[Callable] = None,
+        permission_callback: Callable | None = None,
         validate: bool = True,
     ) -> dict:
         """Replace an existing tool's code on disk and bump its version in the registry.
@@ -447,8 +448,8 @@ class ToolBuilder:
 
         # Validate new code against a temp file
         if validate:
-            import tempfile
             import os as _os
+            import tempfile
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".py", delete=False,
                 encoding="utf-8", prefix=f"ilx_tool_{name}_v",

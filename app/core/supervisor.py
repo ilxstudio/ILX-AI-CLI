@@ -31,10 +31,10 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, IO
 
 _log = logging.getLogger("ilx_cli.supervisor")
 
@@ -412,7 +412,6 @@ class ProcessSupervisor:
     def save_registry(self, limit: int = 50) -> None:
         """Persist the last N completed task records to ~/.ilx_cli/tasks.json."""
         import json
-        from pathlib import Path
         tasks_file = Path.home() / ".ilx_cli" / "tasks.json"
         tasks_file.parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
@@ -437,7 +436,6 @@ class ProcessSupervisor:
     def load_registry(self) -> int:
         """Load prior completed task records from disk into memory. Returns count."""
         import json
-        from pathlib import Path
         tasks_file = Path.home() / ".ilx_cli" / "tasks.json"
         if not tasks_file.exists():
             return 0

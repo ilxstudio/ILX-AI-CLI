@@ -119,14 +119,14 @@ def test_classify_429_retry_after_header():
 
 
 def test_classify_400_context_length():
-    """HTTP 400 with context-related body → CONTEXT_LENGTH, should_retry=True."""
+    """HTTP 400 with context-related body → CONTEXT_LENGTH, should_retry=False."""
     from app.core.error_classifier import classify_error, ErrorClass
 
     exc = _make_http_exc(400, "context_length exceeded: maximum token limit reached")
     result = classify_error(exc, provider="openai")
 
     assert result.error_class == ErrorClass.CONTEXT_LENGTH
-    assert result.should_retry is True
+    assert result.should_retry is False
     assert "compact" in result.suggestion.lower()
 
     save("classify_400_context_length", True, {

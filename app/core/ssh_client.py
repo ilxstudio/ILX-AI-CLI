@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -95,7 +94,12 @@ class SSHClient:
         try:
             import paramiko  # type: ignore
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Load persisted known hosts; reject unknown keys by default.
+            known_hosts = Path.home() / ".ilx_cli" / "known_hosts"
+            known_hosts.parent.mkdir(parents=True, exist_ok=True)
+            if known_hosts.exists():
+                client.load_host_keys(str(known_hosts))
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
             connect_kwargs: dict = {
                 "hostname": self.host,
                 "port":     self.port,
