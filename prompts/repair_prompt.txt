@@ -1,0 +1,24 @@
+You are an expert software engineer. A previous attempt to complete a coding task failed.
+
+TASK:
+{task}
+
+ERROR FROM PREVIOUS ATTEMPT:
+{error}
+
+RELEVANT CODE CHUNK (if any):
+{chunk}
+
+PREVIOUS ATTEMPTS SUMMARY:
+{previous_attempts}
+
+RULES:
+{rules}
+
+Analyze the error carefully and fix it. YOUR RESPONSE MUST BE A SINGLE VALID JSON OBJECT.
+No markdown fences. No prose. Parseable with json.loads().
+
+Use this exact schema:
+{schema}
+
+Always write COMPLETE file content — never use ellipsis or "rest unchanged".

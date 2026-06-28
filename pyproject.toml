@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ilx-ai-cli"
+version = "0.3.0"
+description = "A terminal-first AI coding assistant with multi-provider LLM support, audit logging, and permission gating"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [
+    { name = "ILX Studio", email = "arivera@riveraeng.com" },
+]
+keywords = ["ai", "cli", "llm", "ollama", "coding-assistant", "terminal"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "httpx>=0.27",
+    "httpx-sse>=0.4",
+    "keyring>=25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov",
+]
+pdf = ["pypdf>=4.0", "reportlab>=4.0"]
+docx = ["python-docx>=1.1"]
+xlsx = ["openpyxl>=3.1"]
+image = ["Pillow>=10.0"]
+readline = ["pyreadline3>=3.4"]
+all = [
+    "pypdf>=4.0",
+    "reportlab>=4.0",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "Pillow>=10.0",
+    "pyreadline3>=3.4",
+    "rank-bm25>=0.2",
+]
+
+[project.scripts]
+ilx = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/ilxstudio/ilx-ai-cli"
+"Bug Tracker" = "https://github.com/ilxstudio/ilx-ai-cli/issues"
+Changelog = "https://github.com/ilxstudio/ilx-ai-cli/blob/main/CHANGELOG.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--capture=sys -m \"not provider_live and not ollama_live and not model_quality\""
+markers = [
+    "provider_live: requires live LLM provider",
+    "ollama_live: requires running Ollama",
+    "model_quality: non-deterministic model quality test",
+    "slow: takes >10 seconds",
+    "integration: end-to-end integration test",
+    "security: security-specific test",
+    "windows: Windows-specific test",
+]
+
+[tool.coverage.run]
+source = ["app", "cli", "codex"]
+omit = ["tests/*", "*/conftest.py", "main.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "cli*", "codex*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP"]
+ignore = [
+    "E501",
+    "E402",
+    "UP007",
+    "UP006",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F811", "F401", "E501"]

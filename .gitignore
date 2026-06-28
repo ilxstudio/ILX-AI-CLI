@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.lcov
+tests/results/
+tests/__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ILX CLI runtime
+~/.ilx_cli/
+*.jsonl
+audit_log*.jsonl
+
+# Audit / internal planning documents (not for public repo)
+audit/
+logs/
+
+# Secrets — never commit these
+.env.local
+secrets.json
+api_keys.json
+
+# Build
+*.spec
+*.exe
+*.msi
+MANIFEST
+
+# Test artifacts
+junit*.xml
+
+# Python cache
+*.pyc
+*.pyo
+.Python
+
+# ILX runtime data
+.ilx_cli/
+*.ilx_session
+
+# Editor
+*.swp
+*~
