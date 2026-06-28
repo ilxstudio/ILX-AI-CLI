@@ -86,6 +86,11 @@ def main() -> None:
     _log = logging.getLogger("ilx_cli.main")
     _log.debug("session: %s", _sid)
 
+    import atexit
+    from app.core.snapshot_store import init_snapshot_store, get_store as _get_snap_store
+    init_snapshot_store(sid=_sid)
+    atexit.register(lambda: _get_snap_store().clear())
+
     import sys as _sys
     if "--help" in _sys.argv or "-h" in _sys.argv:
         print("ILX AI CLI — Free, local-first AI developer assistant")

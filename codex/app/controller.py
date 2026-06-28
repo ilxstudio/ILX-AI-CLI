@@ -27,6 +27,8 @@ except ImportError:
     _hooks = None          # type: ignore[assignment]
     _git_helper = None     # type: ignore[assignment]
 
+from app.core.snapshot_store import get_store as _get_snapshot_store
+
 _EXIT_CODE_HINTS: dict[int, str] = {
     0:   "success",
     1:   "generic error",
@@ -94,6 +96,7 @@ class CodingAgent:
         auto_commit:          bool = False,
         commit_message_prefix: str = "ilx: ",
         on_diff:              Callable[[str, str, str], None] | None = None,
+        on_snapshot:          Callable[[str, str], None] | None = None,
     ):
         self.llm_client            = llm_client
         self.on_status             = on_status
@@ -104,6 +107,7 @@ class CodingAgent:
         self.auto_commit           = auto_commit
         self.commit_message_prefix = commit_message_prefix
         self.on_diff               = on_diff
+        self.on_snapshot           = on_snapshot
 
     def run(
         self,
@@ -279,6 +283,21 @@ class CodingAgent:
                                     old_content = workspace.read_file(fa.path)
                                 except (FileNotFoundError, OSError):
                                     old_content = ""
+                                # Snapshot before write — enables /rollback
+                                try:
+                                    _abs_path = str(
+                                        (workspace.workspace / fa.path).resolve()
+                                    )
+                                    _get_snapshot_store().save(
+                                        path=_abs_path,
+                                        content=old_content,
+                                        run_id=run_id,
+                                        label=fa.action,
+                                    )
+                                    if self.on_snapshot:
+                                        self.on_snapshot(_abs_path, run_id)
+                                except Exception:
+                                    pass
                                 workspace.write_file(fa.path, fa.content)
                                 if self.on_diff and fa.action in ("replace", "create") and fa.content:
                                     try:

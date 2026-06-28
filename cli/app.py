@@ -140,7 +140,7 @@ class ILXApp:
             "/errors", "/free", "/setup", "/trust",
             "/plan", "/review", "/fix-tests", "/index", "/research",
             "/route", "/benchmark", "/audit", "/sandbox", "/permission",
-            "/allow", "/deny", "/plugins",  # noqa: E501
+            "/allow", "/deny", "/plugins", "/rollback", "/checkpoint",  # noqa: E501
         })
 
     def _register_commands(self) -> None:
@@ -162,9 +162,10 @@ class ILXApp:
         r.register("/allow",     lambda args: self._allowlist.cmd_allow(args) or False)
         r.register("/deny",      lambda args: self._allowlist.cmd_deny(args) or False)
         r.register("/allowlist", lambda args: self._allowlist.cmd_allowlist(args) or False)
-        r.register("/plugins", lambda a: __import__("cli.commands.plugin_cmds", fromlist=["cmd_plugins"]).cmd_plugins(a, self._cfg) or False)  # noqa: E501
-        from cli.commands.trust_dashboard import cmd_trust
-        r.register("/trust", lambda args: cmd_trust(args, self._cfg) or False)
+        r.register("/plugins",    lambda a: __import__("cli.commands.plugin_cmds", fromlist=["cmd_plugins"]).cmd_plugins(a, self._cfg) or False)   # noqa: E501
+        r.register("/trust",      lambda a: __import__("cli.commands.trust_dashboard", fromlist=["cmd_trust"]).cmd_trust(a, self._cfg) or False)      # noqa: E501
+        r.register("/rollback",   lambda a: __import__("cli.commands.rollback_cmds", fromlist=["cmd_rollback"]).cmd_rollback(a, self._cfg) or False)   # noqa: E501
+        r.register("/checkpoint", lambda a: __import__("cli.commands.rollback_cmds", fromlist=["cmd_checkpoint"]).cmd_checkpoint(a, self._cfg) or False)  # noqa: E501
 
     def _print_trust_summary(self) -> None:
         """Print a one-screen trust/config summary at startup (interactive only)."""
