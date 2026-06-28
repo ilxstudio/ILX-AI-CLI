@@ -11,6 +11,18 @@ from app.utils.file_utils import compute_diff
 
 _log = logging.getLogger("ilx_cli.permissions")
 
+_DESTRUCTIVE_PATTERNS: frozenset[str] = frozenset({
+    "rm -rf",
+    "rm -fr",
+    "del /s",
+    "del /f",
+    "format",
+    "git reset --hard",
+    "DROP TABLE",
+    "drop table",
+    "mkfs",
+})
+
 
 def _check_command_lists(cmd_str: str, cfg) -> str | None:
     """Return 'allow' or 'deny' if command matches a list entry, else None."""
@@ -96,6 +108,15 @@ class PermissionEngine:
         )
         mode_label = mode.value if hasattr(mode, "value") else str(mode)
 
+        # Destructive command warning — logged before allowlist check
+        if kind in ("execute", "command") or operation.command:
+            for pattern in _DESTRUCTIVE_PATTERNS:
+                if pattern in target:
+                    _log.warning(
+                        "Destructive command pattern detected in target: %s", target[:120]
+                    )
+                    break
+
         # Allowlist / denylist check for execute-kind operations
         if kind in ("execute", "command") or operation.command:
             list_decision = _check_command_lists(target, self._config)
@@ -165,7 +186,7 @@ class PermissionEngine:
                 )
             elif operation.new_content is not None:
                 lines = operation.new_content.splitlines()[:10]
-                diff_preview = "\n".join(f"+ {l}" for l in lines)
+                diff_preview = "\n".join(f"+ {line}" for line in lines)
                 if len(operation.new_content.splitlines()) > 10:
                     diff_preview += f"\n... ({len(operation.new_content.splitlines()) - 10} more lines)"
             prompt_msg = f"\n[PERMISSION] {kind.upper()}: {target}"

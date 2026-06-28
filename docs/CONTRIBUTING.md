@@ -38,6 +38,41 @@ Open a GitHub issue. Include:
 - Expected vs actual behavior
 - Any relevant output or error messages
 
+## Coding Standards
+
+The following rules are enforced by `tests/test_36_architecture_fitness.py`
+and must be respected in all contributions.
+
+### File length
+No source file may exceed **700 lines**. If a module grows beyond that, split
+it into focused sub-modules (e.g. `foo.py` → `foo_base.py` + `foo_impl.py`).
+
+### No `shell=True`
+Every `subprocess.run()` or `subprocess.Popen()` call must pass `shell=False`
+(the default). Use `app.core.process_runner.run()` for simple commands and
+`app.core.supervisor.ProcessSupervisor` for long-running tasks.
+
+### No hardcoded paths
+Never write literal OS paths such as `C:\Users\...` or `/home/user/...` in
+production code. Use `Path.home()`, `sys.executable`, or a value from
+`AppConfig` instead.
+
+### OOP patterns
+One class per concern. Avoid procedural god-files. Pass `AppConfig` by
+reference — do not read environment variables in business logic.
+
+### No LLM provider name in comments or docs
+Do not reference specific LLM provider names (e.g. model brand names) in
+`.md`, `.txt`, or source comments unless the code literally connects to that
+provider's API. Use the generic terms "LLM", "model", or "AI provider".
+
+### Layer dependency rules
+Dependencies only flow **downward**:
+```
+cli/  →  app/core/  →  codex/app/
+```
+`app/core/` and `codex/app/` must never import from `cli/`.
+
 ## Code of Conduct
 
 Be respectful. Constructive criticism is welcome; personal attacks are not.

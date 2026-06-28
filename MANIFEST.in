@@ -1,0 +1,26 @@
+# MANIFEST.in — controls which extra files are included in sdist / wheel builds.
+
+# Documentation and legal
+include LICENSE
+include README.md
+include SECURITY.md
+include PRIVACY.md
+recursive-include docs *.md
+
+# Prompt templates
+recursive-include prompts *.txt *.md *.yaml *.yml *.json
+
+# Exclude generated / runtime artefacts
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.pyo
+global-exclude *.so
+global-exclude *.dylib
+global-exclude .DS_Store
+
+# Exclude audit and log data
+recursive-exclude audit *
+recursive-exclude logs *
+global-exclude *.jsonl
+global-exclude audit.log
+global-exclude audit.log.*

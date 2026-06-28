@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,20 @@ _SECRET_FIELD_SUBSTRINGS = (
 )
 
 
+_SECRET_VALUE_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),
+    re.compile(r"AIza[A-Za-z0-9_\-]{35}"),
+    re.compile(r"gsk_[A-Za-z0-9]{20,}"),
+)
+
+
+def _redact(value: str) -> str:
+    """Replace known secret patterns in *value* with ``[REDACTED]``."""
+    for pattern in _SECRET_VALUE_PATTERNS:
+        value = pattern.sub("[REDACTED]", value)
+    return value
+
+
 def _redact_fields(fields: dict) -> dict:
     """Return a copy of *fields* with secret-shaped string values replaced.
 
@@ -35,6 +50,8 @@ def _redact_fields(fields: dict) -> dict:
         k_lower = k.lower()
         if isinstance(v, str) and v and any(sub in k_lower for sub in _SECRET_FIELD_SUBSTRINGS):
             safe[k] = "<redacted>"
+        elif isinstance(v, str):
+            safe[k] = _redact(v)
         else:
             safe[k] = v
     return safe
