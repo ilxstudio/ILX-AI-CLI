@@ -18,6 +18,7 @@ class PermissionMode(str, Enum):
     DENY_ALL     = "deny_all"
 
 
+# all the settings the app cares about in one place
 @dataclass
 class AppConfig:
     ollama_url:            str            = "http://localhost:11434"
@@ -86,6 +87,7 @@ class ConfigManager:
     def __init__(self):
         self._qs = JsonStore.get()
 
+    # pull everything from the JSON store into a fresh AppConfig
     def load(self) -> AppConfig:
         cfg = AppConfig()
         cfg.ollama_url             = self._qs.value("ollama_url",             cfg.ollama_url,             str)
@@ -103,6 +105,7 @@ class ConfigManager:
         cfg.system_prompt          = self._qs.value("system_prompt",          cfg.system_prompt,          str)
         cfg.tool_use_enabled       = self._qs.value("tool_use_enabled",       cfg.tool_use_enabled,       bool)
 
+        # guard against invalid permission_mode values written by older versions
         raw_mode = self._qs.value("permission_mode", cfg.permission_mode.value, str)
         try:
             cfg.permission_mode = PermissionMode(raw_mode)
@@ -116,7 +119,7 @@ class ConfigManager:
         cfg.command_allowlist = self._qs.value("command_allowlist", [], list)
         cfg.command_denylist  = self._qs.value("command_denylist",  [], list)
 
-        # Environment overrides applied after disk load
+        # env vars applied last so they can override whatever's on disk
         if os.environ.get("ILX_YES") == "1":
             cfg.auto_yes = True
 

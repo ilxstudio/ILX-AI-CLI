@@ -4,23 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ilx-ai-cli"
-version = "0.3.0"
-description = "A terminal-first AI coding assistant with multi-provider LLM support, audit logging, and permission gating"
+version = "1.0.0"
+description = "Free, local-first AI coding assistant for terminal developers"
 readme = "README.md"
-license = { file = "LICENSE" }
-requires-python = ">=3.11"
+license = { text = "MIT" }
+requires-python = ">=3.12"
 authors = [
     { name = "ILX Studio", email = "arivera@riveraeng.com" },
 ]
 keywords = ["ai", "cli", "llm", "ollama", "coding-assistant", "terminal"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Utilities",
@@ -95,7 +94,7 @@ include = ["app*", "cli*", "codex*"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP"]

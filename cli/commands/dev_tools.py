@@ -22,6 +22,7 @@ _SKIP_DIRS = {
 from cli.commands.dev_tools_extra import DevToolsExtraCommands
 from cli.commands.dev_tools_quality import DevToolsQualityMixin
 
+# maps file extensions to the interpreter needed to run them
 _INTERPRETER_MAP = {
     ".py":   ["python"],
     ".pyw":  ["python"],
@@ -38,13 +39,13 @@ _INTERPRETER_MAP = {
 
 
 def _resolve_run_args(args: list[str]) -> list[str]:
-    """Prepend interpreter if args[0] is a bare script file with a known extension."""
+    """Prepend the right interpreter if the first arg is a script with a known extension."""
     if not args:
         return ["python", "main.py"]
     first = args[0]
     ext = Path(first).suffix.lower()
     if ext not in _INTERPRETER_MAP:
-        return args  # already has interpreter, or unknown — pass through
+        return args  # already has interpreter, or unknown type — pass through
     interp = _INTERPRETER_MAP[ext]
     if not interp:
         return args  # e.g. .rs — user must type `cargo run`
@@ -52,7 +53,6 @@ def _resolve_run_args(args: list[str]) -> list[str]:
 
 
 class DevToolsCommands(DevToolsQualityMixin):
-    """Handles all developer-tool slash commands."""
 
     def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
@@ -68,8 +68,7 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(f"{YELLOW}No workspace set. Use /workspace first.{RESET}")
         return wf
 
-    # ── Delegated to DevToolsExtraCommands ───────────────────────────────────
-
+    # delegate watch/profile/attach to the extra module to keep this file lean
     def cmd_watch(self, args: list[str]) -> None:
         self._extra.cmd_watch(args)
 
@@ -78,8 +77,6 @@ class DevToolsCommands(DevToolsQualityMixin):
 
     def cmd_attach(self, args: list[str]) -> None:
         self._extra.cmd_attach(args)
-
-    # ── /run ─────────────────────────────────────────────────────────────────
 
     def cmd_run(self, args: list[str]) -> None:
         from app.core.supervisor import supervisor
@@ -110,8 +107,6 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(f"  {YELLOW}Tip: if your program waits for keyboard input, it will always timeout here.{RESET}")
             print(f"  {DIM}Run non-interactive scripts or pipe input: /run python script.py < input.txt{RESET}")
 
-    # ── /kill ─────────────────────────────────────────────────────────────────
-
     def cmd_kill(self, args: list[str] | None = None) -> None:
         from app.core.supervisor import supervisor
         from cli.display import GREEN, RESET, YELLOW
@@ -122,8 +117,6 @@ class DevToolsCommands(DevToolsQualityMixin):
         else:
             label = f"task {task_id}" if task_id else "any running task"
             print(f"  {YELLOW}No running {label} found.{RESET}")
-
-    # ── /test ─────────────────────────────────────────────────────────────────
 
     def cmd_test(self, args: list[str]) -> None:
         from app.core import process_runner
@@ -136,11 +129,10 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(f"{YELLOW}pytest not found. Install with: pip install pytest{RESET}")
             return
 
-        # Detect --cov flag and filter pytest path args
         use_cov = "--cov" in args
         raw_args = [a for a in args if a != "--cov"]
 
-        # Separate path args from pytest flags; guard against non-test files
+        # separate path args from flags; warn if someone passes a non-test file
         path_args: list[str] = []
         flag_args: list[str] = []
         for a in raw_args:
@@ -153,7 +145,7 @@ class DevToolsCommands(DevToolsQualityMixin):
             else:
                 path_args.append(a)
 
-        # Default test target: tests/ dir if it exists, else workspace root
+        # default to tests/ dir if it exists, otherwise run everything
         if not path_args:
             tests_dir = Path(wf) / "tests"
             path_args = ["tests"] if tests_dir.is_dir() else ["."]
@@ -189,8 +181,6 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(f"  {DIM}{r.stderr[:500]}{RESET}")
         col = GREEN if r.ok else RED
         print(f"  {col}[exit {r.returncode}]{RESET}")
-
-    # ── /lint ─────────────────────────────────────────────────────────────────
 
     def cmd_lint(self, args: list[str]) -> None:
         from app.core import process_runner
@@ -238,8 +228,6 @@ class DevToolsCommands(DevToolsQualityMixin):
                         check_cmd=["mypy", "."],
                         fix_cmd=["mypy", "."])
 
-    # ── /format ───────────────────────────────────────────────────────────────
-
     def cmd_format(self) -> None:
         from app.core import process_runner
         from cli.display import DIM, GREEN, RED, RESET, YELLOW
@@ -267,8 +255,6 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(f"  {col}[{tool} exit {r.returncode}]{RESET}")
         if not ran_any:
             print(f"  {YELLOW}No formatter found. Install ruff or black: pip install ruff black{RESET}")
-
-    # ── /build ────────────────────────────────────────────────────────────────
 
     def cmd_build(self, args: list[str]) -> None:
         from app.core import build_helper
@@ -308,8 +294,6 @@ class DevToolsCommands(DevToolsQualityMixin):
 
         success, summary = build_helper.build(entry, wf, onefile=onefile, on_output=_out)
         print(f"\n{GREEN if success else RED}{summary}{RESET}")
-
-    # ── /deps ─────────────────────────────────────────────────────────────────
 
     def cmd_deps(self, args: list[str]) -> None:
         from app.core import process_runner
@@ -353,8 +337,6 @@ class DevToolsCommands(DevToolsQualityMixin):
                 print(f"{RED}pip outdated failed: {r.stderr}{RESET}")
         else:
             print(f"{YELLOW}Usage: /deps  |  /deps install <pkg>  |  /deps outdated{RESET}")
-
-    # ── /stats ────────────────────────────────────────────────────────────────
 
     def cmd_stats(self, args: list[str] | None = None) -> None:
         from cli.display import BOLD, GREEN, RESET, YELLOW
@@ -416,8 +398,6 @@ class DevToolsCommands(DevToolsQualityMixin):
             print(json.dumps(payload, indent=2))
         print()
 
-    # ── /tasks ────────────────────────────────────────────────────────────────
-
     def cmd_tasks(self, args: list[str]) -> None:
         from app.core.supervisor import TaskStatus, supervisor
         from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
@@ -465,8 +445,6 @@ class DevToolsCommands(DevToolsQualityMixin):
         else:
             print(f"{YELLOW}Usage: /tasks  |  /tasks tail <TASK_ID>  |  /tasks killall{RESET}")
 
-    # ── /ci ───────────────────────────────────────────────────────────────────
-
     def cmd_ci(self, args: list[str]) -> None:
         """Run the full local CI pipeline: ruff, mypy, pytest --cov, bandit."""
         from app.core import process_runner
@@ -510,8 +488,6 @@ class DevToolsCommands(DevToolsQualityMixin):
         col    = GREEN if passed == total else (YELLOW if passed > 0 else RED)
         print(f"\n{col}{BOLD}{passed}/{total} steps passed{RESET}\n")
 
-    # ── /env ──────────────────────────────────────────────────────────────────
-
     def cmd_env(self) -> None:
         from cli.display import BOLD, CYAN, DIM, RED, RESET
         wf = self._require_workspace()
@@ -530,6 +506,7 @@ class DevToolsCommands(DevToolsQualityMixin):
                 elif "=" in ls:
                     k, _, v = ls.partition("=")
                     k = k.removeprefix("export ").strip()
+                    # mask secrets but leave the first and last 2 chars visible
                     masked = v if len(v) <= 4 else v[:2] + "*" * (len(v) - 4) + v[-2:]
                     print(f"  {CYAN}{k}{RESET}={masked}")
                 else:
@@ -537,8 +514,6 @@ class DevToolsCommands(DevToolsQualityMixin):
         except OSError as exc:
             print(f"  {RED}Could not read .env: {exc}{RESET}")
         print()
-
-    # ── /logs ─────────────────────────────────────────────────────────────────
 
     def cmd_logs(self, args: list[str]) -> None:
         from cli.display import BOLD, DIM, RED, RESET, YELLOW
@@ -567,8 +542,6 @@ class DevToolsCommands(DevToolsQualityMixin):
             print()
         except OSError as exc:
             print(f"  {RED}Could not read log: {exc}{RESET}")
-
-    # ── /crashes ──────────────────────────────────────────────────────────────
 
     def cmd_crashes(self, args: list[str]) -> None:
         from app.core import crash_db

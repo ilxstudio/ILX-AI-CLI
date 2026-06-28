@@ -1,11 +1,4 @@
-"""Hybrid retriever -- fuses BM25 keyword + semantic embedding search.
-
-Wraps SemanticRAG (which already does BM25+vector internally) and adds:
-- Symbol search via Python AST and regex for JS/TS/Go/Rust/Java
-- File-tree structural search
-- Cross-session persistence via PersistentEmbeddingStore
-- Incremental reindex via mtime tracking
-"""
+"""Hybrid retriever — fuses BM25 keyword + semantic embedding search."""
 from __future__ import annotations
 
 import ast
@@ -22,12 +15,11 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("ilx_cli.hybrid_retriever")
 
-# ── Configurable score defaults ───────────────────────────────────────────────
-# These can be overridden via AppConfig.rag_bm25_weight / rag_semantic_weight.
+# fallback thresholds when cfg values aren't available
 _BM25_SCORE_DEFAULT     = 0.6
 _SEMANTIC_SCORE_DEFAULT = 0.75
 
-# Regex patterns for symbol extraction in non-Python languages.
+# per-language regex patterns for pulling out function/class/interface names
 _LANG_SYMBOL_RE: dict[str, re.Pattern] = {
     ".js": re.compile(
         r"(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)"
@@ -71,19 +63,14 @@ _LANG_SYMBOL_RE: dict[str, re.Pattern] = {
 
 
 def _extract_symbols_by_language(path: str, text: str) -> list[str]:
-    """Return symbol names found in *text* using language-specific regex.
-
-    Supports JS, TS, JSX, TSX, Go, Rust, and Java. Returns an empty list
-    for unrecognised extensions or when no symbols are found.
-    """
+    """Return symbol names found in *text* using language-specific regex."""
     suffix = Path(path).suffix.lower()
     pattern = _LANG_SYMBOL_RE.get(suffix)
     if pattern is None:
         return []
     symbols: list[str] = []
     for m in pattern.finditer(text):
-        # Each group in the alternation captures one symbol name; only one
-        # group fires per match — collect the first non-None group.
+        # only one group fires per match in the alternations — grab the first non-None one
         name = next((g for g in m.groups() if g), None)
         if name:
             symbols.append(name)
@@ -108,11 +95,7 @@ class IndexStats:
 
 
 def _parse_rag_blocks(text: str, default_score: float, kind: str) -> list[RetrievedChunk]:
-    """Parse RAG output text into RetrievedChunk objects.
-
-    Each block starts with an optional '[File: path, lines a-b]' header.
-    Malformed blocks are skipped gracefully.
-    """
+    """Parse RAG output text into RetrievedChunk objects."""
     results: list[RetrievedChunk] = []
     for block in text.split("\n\n"):
         block = block.strip()
@@ -123,12 +106,11 @@ def _parse_rag_blocks(text: str, default_score: float, kind: str) -> list[Retrie
         if block.startswith("[File:"):
             try:
                 header_end = block.index("]")
-                # Header format: "[File: <path>, lines a-b]"
                 header_inner = block[6:header_end]  # everything after "[File:"
                 source = header_inner.split(",")[0].strip()
                 content = block[header_end + 1:].strip()
             except (ValueError, IndexError):
-                # Malformed header — treat the entire block as content
+                # malformed header — treat the whole block as content
                 _log.debug("hybrid_retriever: skipping malformed chunk header in block: %r", block[:80])
                 source = ""
                 content = block
@@ -143,10 +125,7 @@ def _parse_rag_blocks(text: str, default_score: float, kind: str) -> list[Retrie
 
 
 def _parse_line_range(block_text: str) -> tuple[str, int] | None:
-    """Extract (file, line_start) from a '[File: path, lines a-b]' header.
-
-    Returns None when the header is absent or malformed.
-    """
+    """Extract (file, line_start) from a '[File: path, lines a-b]' header."""
     if not block_text.startswith("[File:"):
         return None
     try:
@@ -155,7 +134,6 @@ def _parse_line_range(block_text: str) -> tuple[str, int] | None:
         parts = header_inner.split(",")
         file_part = parts[0].strip()
         if len(parts) >= 2:
-            # "lines a-b"
             lines_part = parts[1].strip()
             tokens = lines_part.split()
             if len(tokens) >= 2:
@@ -168,20 +146,13 @@ def _parse_line_range(block_text: str) -> tuple[str, int] | None:
 
 
 class HybridRetriever:
-    """
-    Multi-pass retriever combining:
-      1. BM25 keyword search (via RAG)
-      2. Semantic / vector search (via SemanticRAG)
-      3. AST symbol search for Python files
-    """
 
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
         self._semantic = None                       # lazy — avoid heavy import on startup
         self._symbol_index: dict[str, str] = {}    # symbol_name -> file_path
         self._mtime_cache: dict[str, float] = {}   # str(path) -> last known mtime
-        # Score thresholds — read from cfg when available, else fall back to module defaults.
-        # Guard against MagicMock / non-numeric values in tests.
+        # guard against MagicMock / non-numeric values in tests
         try:
             self._bm25_score = float(cfg.rag_bm25_weight)
         except (AttributeError, TypeError, ValueError):
@@ -194,14 +165,10 @@ class HybridRetriever:
     # ── public API ────────────────────────────────────────────────────────
 
     def index_folder(self, folder: str, on_progress: Callable | None = None) -> int:
-        """Index all text files in *folder*. Returns count of files indexed.
-
-        Files are read in parallel (I/O-bound); indexing is serialized per
-        file to keep SemanticRAG's embedding state consistent.
-        """
+        """Index all text files in *folder*. Returns count of files indexed."""
         sem = self._get_semantic()
         if sem is None:
-            # Fall back to BM25-only path via a plain RAG instance
+            # no embeddings available — fall back to plain BM25
             from app.core.rag import RAG
             sem = RAG()
             self._semantic = sem
@@ -216,7 +183,7 @@ class HybridRetriever:
         def _read_file(path: Path) -> tuple[str, str]:
             return str(path.relative_to(folder_path)), path.read_text(encoding="utf-8", errors="replace")
 
-        # Phase 1: parallel file reads (pure I/O, thread-safe)
+        # phase 1: parallel reads — pure I/O, safe to do concurrently
         file_texts: list[tuple[str, str]] = []
         workers = min(8, len(source_files))
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -228,7 +195,7 @@ class HybridRetriever:
                 except OSError:
                     continue
 
-        # Phase 2: sequential indexing (SemanticRAG.add mutates shared state)
+        # phase 2: sequential indexing — SemanticRAG.add mutates shared state
         count = 0
         for rel, text in file_texts:
             sem.add(rel, text)
@@ -262,11 +229,7 @@ class HybridRetriever:
         return True
 
     def refresh_changed_files(self, folder: str) -> int:
-        """Reindex only files that were added, modified, or deleted since last index.
-
-        Compares current on-disk mtimes against *_mtime_cache*. Returns the
-        number of files that were refreshed (added + modified + removed).
-        """
+        """Reindex only files that changed since last index. Returns files refreshed."""
         folder_path = Path(folder)
         if not folder_path.is_dir():
             return 0
@@ -285,7 +248,7 @@ class HybridRetriever:
                 if self.index_file(key):
                     refreshed += 1
 
-        # Remove stale entries (files deleted from disk)
+        # clean up stale cache entries for files deleted from disk
         stale = [k for k in self._mtime_cache if k not in current_paths]
         for key in stale:
             self.remove_file(key)
@@ -300,16 +263,12 @@ class HybridRetriever:
             sem.remove(path)
 
     def query(self, query: str, top_k: int = 8, max_chars: int = 8_000) -> str:
-        """Run all retrieval passes and return a formatted context string.
-
-        Results are deduplicated by (file, line_start) key keeping the
-        higher-scored version, then rendered as '[File: ...] / content' blocks.
-        """
+        """Run all retrieval passes and return a formatted context string."""
         results: list[RetrievedChunk] = []
 
         sem = self._get_semantic()
 
-        # 1. BM25 — falls through to SemanticRAG.query which handles BM25 internally
+        # pass 1: BM25 — SemanticRAG.query handles this internally
         if sem is not None:
             try:
                 bm25_text = sem.query(query, top_k=top_k, max_chars=max_chars)
@@ -318,7 +277,7 @@ class HybridRetriever:
             except Exception as exc:
                 _log.debug("BM25 retrieve error: %s", exc)
 
-        # 2. Semantic — SemanticRAG.query returns a rendered string
+        # pass 2: semantic/vector search
         if sem is not None:
             try:
                 sem_text = sem.query(query, top_k=top_k, max_chars=max_chars)
@@ -327,7 +286,7 @@ class HybridRetriever:
             except Exception as exc:
                 _log.debug("Semantic retrieve error: %s", exc)
 
-        # 3. Symbol search
+        # pass 3: symbol name search — quick substring match on indexed names
         try:
             for sym_name, sym_file in self._symbol_index.items():
                 if query.lower() in sym_name.lower():
@@ -340,8 +299,7 @@ class HybridRetriever:
         except Exception as exc:
             _log.debug("Symbol search error: %s", exc)
 
-        # Deduplicate by (file, line_start) key — keep highest-scored version.
-        # For chunks without parseable line ranges, fall back to content prefix key.
+        # deduplicate by (file, line_start) — keep the higher-scored version for duplicates
         dedup: dict[str, RetrievedChunk] = {}
         for r in results:
             line_key = _parse_line_range(
@@ -356,7 +314,7 @@ class HybridRetriever:
 
         ranked = sorted(dedup.values(), key=lambda x: -x.score)[:top_k]
 
-        # Render as a plain text block suitable for injection into system prompt
+        # render as plain text blocks for injection into the system prompt
         parts: list[str] = []
         used = 0
         for r in ranked:
@@ -394,11 +352,7 @@ class HybridRetriever:
     # ── private ───────────────────────────────────────────────────────────
 
     def _get_semantic(self):
-        """Return the SemanticRAG instance, initializing lazily.
-
-        If initialization fails, logs a WARNING and returns None so callers
-        can fall back to BM25-only mode.
-        """
+        # lazy init so we don't pay the import cost until someone actually queries
         if self._semantic is None:
             try:
                 from app.core.semantic_rag import SemanticRAG
@@ -413,7 +367,6 @@ class HybridRetriever:
         return self._semantic
 
     def _update_mtime(self, path: str) -> None:
-        """Store the current mtime for *path* in the cache."""
         try:
             self._mtime_cache[path] = Path(path).stat().st_mtime
         except OSError:
@@ -422,6 +375,7 @@ class HybridRetriever:
     def _index_symbols_from_file(self, path: str, text: str) -> None:
         suffix = Path(path).suffix.lower()
         if suffix == ".py":
+            # use the AST for Python — more accurate than regex
             try:
                 tree = ast.parse(text)
             except SyntaxError:

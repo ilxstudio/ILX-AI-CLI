@@ -13,11 +13,12 @@ from app.utils.file_utils import compute_diff
 _log = logging.getLogger("ilx_cli.permissions")
 
 
+# tracks how many times a given op kind has been denied recently
+# so we can auto-deny if something is clearly stuck in a loop
 class _DenialTracker:
-    """Tracks denial counts per operation kind with a sliding time window."""
 
     _WINDOW_SECS = 60
-    _MAX_DENIALS = 5  # after this many denials in the window, auto-deny silently
+    _MAX_DENIALS = 5  # past this many denials in the window, just auto-deny
 
     def __init__(self) -> None:
         self._counts: dict[str, list[float]] = {}  # kind -> list of timestamps
@@ -26,7 +27,7 @@ class _DenialTracker:
         now = time.monotonic()
         ts = self._counts.setdefault(kind, [])
         ts.append(now)
-        # Evict old entries
+        # drop timestamps outside the window
         self._counts[kind] = [t for t in ts if now - t < self._WINDOW_SECS]
 
     def is_throttled(self, kind: str) -> bool:
@@ -38,6 +39,7 @@ class _DenialTracker:
 
 _denial_tracker = _DenialTracker()
 
+# patterns that should always trigger a warning even if they're on the allowlist
 _DESTRUCTIVE_PATTERNS: frozenset[str] = frozenset({
     "rm -rf",
     "rm -fr",
@@ -115,7 +117,6 @@ class PermissionEngine:
             return None
 
     def _warn_sandbox_escape(self, target: str) -> None:
-        """Log a warning if a command target may access paths outside the workspace."""
         wf = getattr(self._config, "working_folder", "")
         if wf and target and not target.startswith(wf):
             _log.warning(
@@ -141,7 +142,7 @@ class PermissionEngine:
         )
         mode_label = mode.value if hasattr(mode, "value") else str(mode)
 
-        # Rate-limit: auto-deny if this kind has been denied too often recently
+        # auto-deny if this kind of operation has been denied too many times recently
         if _denial_tracker.is_throttled(kind):
             _log.warning(
                 "Operation auto-denied: too many denials for kind=%s in the last 60s",
@@ -155,7 +156,7 @@ class PermissionEngine:
             )
             return False
 
-        # Destructive command warning — logged before allowlist check
+        # log a warning for destructive patterns before we do anything else
         if kind in ("execute", "command") or operation.command:
             for pattern in _DESTRUCTIVE_PATTERNS:
                 if pattern in target:
@@ -170,7 +171,7 @@ class PermissionEngine:
                     )
                     break
 
-        # Allowlist / denylist check for execute-kind operations
+        # allowlist/denylist takes priority for execute-type operations
         if kind in ("execute", "command") or operation.command:
             list_decision = _check_command_lists(target, self._config)
             if list_decision == "deny":
@@ -186,7 +187,7 @@ class PermissionEngine:
                 )
                 return True
 
-        # Sandbox mode enforcement
+        # read_only sandbox blocks all execute operations
         if kind in ("execute", "command") or operation.command:
             sandbox = getattr(self._config, "sandbox_mode", "workspace")
             if sandbox == "read_only":
@@ -204,7 +205,7 @@ class PermissionEngine:
             )
             return False
 
-        # Profile-aware decision — takes priority over AUTO_APPROVE / ASK modes
+        # permission profile can override auto_approve/ask for this specific kind
         profile_decision = self._apply_profile(kind)
         if profile_decision == "allow":
             audit.log_permission_decision(
@@ -228,7 +229,7 @@ class PermissionEngine:
                 self._warn_sandbox_escape(target)
             return True
 
-        # ASK mode — prompt on console
+        # ASK mode — fall through to the console prompt
         if operation.command:
             prompt_msg = f"\n[PERMISSION] Run command: {' '.join(operation.command)}\nAllow? [y/N] "
         else:

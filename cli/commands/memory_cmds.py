@@ -1,15 +1,4 @@
-"""Memory commands — /memory for persistent project knowledge.
-
-Subcommands:
-  /memory show [query]     — list facts (optionally filtered)
-  /memory add <key> <val>  — store a fact
-  /memory forget <key>     — delete facts with this key
-  /memory fixes [file]     — show past fix decisions
-  /memory stats            — database statistics
-  /memory search <query>   — search facts and symbols
-
-Copyright 2026 ILX Studio — MIT License
-"""
+"""Memory commands — /memory for reading and writing persistent project knowledge."""
 from __future__ import annotations
 
 import logging
@@ -38,6 +27,7 @@ class MemoryCommands:
         self._cfg = cfg
 
     def _mem(self):
+        # lazy load so we don't hit the DB until the command is actually used
         from app.core.project_memory import get_memory
         from app.core.audit import get_session_id
         return get_memory(self._cfg.working_folder or "", session_id=get_session_id())
@@ -60,8 +50,6 @@ class MemoryCommands:
             fn(args[1:])
         else:
             fn(rest)
-
-    # ── subcommands ────────────────────────────────────────────────────────────
 
     def _show(self, args: list[str]) -> None:
         mem = self._mem()

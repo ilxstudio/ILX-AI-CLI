@@ -1,4 +1,4 @@
-"""Test-fix loop engine -- run tests, parse failures, patch, repeat."""
+"""Test-fix loop engine — run tests, parse failures, patch, repeat."""
 from __future__ import annotations
 
 import logging
@@ -57,7 +57,6 @@ def detect_test_runner(working_folder: str) -> list[str]:
         return ["cargo", "test"]
     if (wf / "go.mod").exists():
         return ["go", "test", "./..."]
-    # default to pytest
     return [sys.executable, "-m", "pytest", "--tb=short", "-q"]
 
 
@@ -66,9 +65,7 @@ def detect_test_runner(working_folder: str) -> list[str]:
 def parse_pytest_failures(output: str) -> list[TestFailure]:
     """Parse pytest --tb=short output into structured failures."""
     failures: list[TestFailure] = []
-    # Match FAILED lines: "FAILED tests/test_foo.py::test_bar - AssertionError: ..."
     failed_re = re.compile(r"^FAILED\s+(\S+)\s+-\s+(.+)$", re.MULTILINE)
-    # Match short traceback blocks: "test_foo.py:42: AssertionError"
     loc_re = re.compile(r"(\S+\.py):(\d+):\s*(\w+Error[^\n]*)", re.MULTILINE)
 
     for m in failed_re.finditer(output):
@@ -120,6 +117,7 @@ def parse_failures(runner: list[str], output: str) -> list[TestFailure]:
 
 # ── Fix prompt ────────────────────────────────────────────────────────────────
 
+# system prompt that steers the LLM toward minimal surgical patches
 _FIX_SYSTEM = """\
 You are an expert Python developer. You will be given test failures and the
 relevant source files. Produce minimal, surgical patches to fix the failures.
@@ -142,7 +140,6 @@ Rules:
 
 
 class TestFixLoop:
-    """Runs tests, parses failures, asks LLM to fix, repeats up to max_attempts."""
 
     def __init__(self, cfg: AppConfig, max_attempts: int = 5) -> None:
         self._cfg = cfg
@@ -155,15 +152,7 @@ class TestFixLoop:
         only: str | None = None,
         on_progress: Callable | None = None,
     ) -> TestFixResult:
-        """
-        Run the test-fix loop.
-
-        Args:
-            working_folder: Project root directory.
-            runner: Override test command. Auto-detected if None.
-            only: Run only tests matching this pattern (passed to runner).
-            on_progress: Callback(attempt, failures_before, output) for UI updates.
-        """
+        """Run the test-fix loop until all tests pass or max_attempts is reached."""
         from app.core import process_runner as _pr
 
         wf = working_folder or self._cfg.working_folder or ""
@@ -175,7 +164,6 @@ class TestFixLoop:
         result = TestFixResult()
 
         for attempt_num in range(1, self._max + 1):
-            # Run tests
             run_result = _pr.run(cmd, cwd=wf or None, timeout=120)
             output = (run_result.stdout or "") + "\n" + (run_result.stderr or "")
 
@@ -193,17 +181,16 @@ class TestFixLoop:
                 break
 
             if not failures:
-                # runner failed but no parsed failures — stop
+                # runner failed but we couldn't parse any failures — give up
                 result.error = f"Test runner exited {run_result.returncode} with unparseable output."
                 result.final_failures = []
                 break
 
             _log.info("attempt %d: %d failure(s)", attempt_num, failures_before)
 
-            # Ask LLM to fix
             patches_applied = self._fix_failures(failures, wf)
 
-            # Run again to count remaining
+            # run again to see if the patches helped
             run2 = _pr.run(cmd, cwd=wf, timeout=120)
             output2 = (run2.stdout or "") + "\n" + (run2.stderr or "")
             failures_after_list = parse_failures(cmd, output2)
@@ -224,6 +211,7 @@ class TestFixLoop:
             result.total_fixed += max(0, failures_before - failures_after)
             result.final_failures = failures_after_list
 
+            # stop if we're making no progress — avoid spinning forever
             if failures_after >= failures_before:
                 _log.warning("attempt %d made no progress — stopping", attempt_num)
                 break
@@ -231,8 +219,7 @@ class TestFixLoop:
         return result
 
     def _fix_failures(self, failures: list[TestFailure], wf: str) -> int:
-        """Ask the LLM to patch files to fix the given failures."""
-        # Build context from failing files
+        # gather source context for the failing files so the LLM has something to work with
         file_contents: dict[str, str] = {}
         for f in failures[:5]:  # cap at 5 failures per round
             if f.file:

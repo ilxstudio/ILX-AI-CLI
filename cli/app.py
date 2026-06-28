@@ -1,8 +1,4 @@
-"""ILXApp — main interactive REPL orchestrator.
-
-Readline setup, alias store, and input helpers live in cli/app_helpers.py to
-keep this file under 700 lines.
-"""
+"""ILX AI CLI — main interactive REPL loop and command dispatch."""
 from __future__ import annotations
 
 import logging
@@ -18,7 +14,6 @@ _log = logging.getLogger("ilx_cli.app")
 
 
 class ILXApp:
-    """Interactive CLI application — owns the REPL loop and command dispatch."""
 
     def __init__(self) -> None:
         from app.core.config import ConfigManager
@@ -69,7 +64,7 @@ class ILXApp:
         from cli.commands.docker_cmds import DockerCommands
         self._docker = DockerCommands(self._cfg)
 
-        # Shared stateful RAG index — kept in sync with /add and /drop
+        # shared RAG index — /add and /drop keep this in sync
         from app.core.rag import RAG
         self._rag = RAG()
 
@@ -109,18 +104,17 @@ class ILXApp:
         from cli.plan_session import PlanSession
         self._plan = PlanSession(self._cfg, self._ctx)
 
-        # Restore prior task history from disk
+        # restore whatever tasks were running last time
         from app.core.supervisor import supervisor as _supervisor
         _supervisor.load_registry()
 
-        # Alias store
         self._alias_store = _AliasStore()
         self._registry = CommandRegistry()
         self._register_commands()
 
         self._mode = "chat"
 
-        # Set up readline history + tab completion (best-effort)
+        # readline history + tab completion — fine to fail on systems without it
         _setup_readline(self._all_commands())
 
     def _all_commands(self) -> list[str]:
@@ -144,7 +138,7 @@ class ILXApp:
         })
 
     def _register_commands(self) -> None:
-        """Populate the command registry for prefix-match dispatch."""
+        """Register all slash commands into the registry for prefix-match dispatch."""
         r = self._registry
         r.register("/review",    lambda args: self._review.cmd_review(args) or False)
         r.register("/fix-tests", lambda args: self._fix.cmd_fix_tests(args) or False)
@@ -172,7 +166,7 @@ class ILXApp:
         r.register("/debug",      lambda a: __import__("cli.commands.debug_cmds", fromlist=["DebugCommands"]).DebugCommands(self._cfg).cmd_debug(a) or False)  # noqa: E501
 
     def _print_trust_summary(self) -> None:
-        """Print a one-screen trust/config summary at startup (interactive only)."""
+        """Print the trust/config summary at startup when running interactively."""
         import sys
         if not sys.stdin.isatty():
             return
@@ -180,6 +174,7 @@ class ILXApp:
         from cli.rich_display import _emit_json, get_output_mode  # noqa: WPS347
 
         cfg = self._cfg
+        # try to get a nice provider label from the route engine first
         try:
             from app.core.route_engine import free_tier_label as _ftl
             provider_label = _ftl(cfg)
@@ -245,7 +240,7 @@ class ILXApp:
         else:
             print(f"{DIM}Provider: {self._cfg.provider}  Model: {self._cfg.ollama_model}{RESET}")
 
-        # Warn if repeated crashes detected
+        # warn if the same command has crashed multiple times
         try:
             from app.core import crash_db
             groups = crash_db.group_summary()
@@ -258,7 +253,7 @@ class ILXApp:
         except Exception as exc:
             _log.debug("crash_db unavailable at startup: %s", exc)
 
-        # Show count of active user tools
+        # show how many user-defined tools are loaded
         try:
             user_tool_count = len(self._user_tools._get_registry().list_tools())
             if user_tool_count > 0:
@@ -310,20 +305,20 @@ class ILXApp:
         """Handle a slash command. Returns True if the app should exit."""
         from cli.display import DIM, GREEN, RESET, YELLOW, print_help
 
-        # ── Alias expansion ──────────────────────────────────────────────────
+        # expand aliases before anything else
         parts = raw.split()
         cmd   = parts[0].lower()
         args  = parts[1:]
 
         expanded_alias = self._alias_store.get(cmd.lstrip("/"))
         if expanded_alias:
-            # Replace cmd+args with the expanded alias + any trailing args
+            # paste the alias expansion back and re-parse
             raw = expanded_alias + (" " + " ".join(args) if args else "")
             parts = raw.split()
             cmd   = parts[0].lower()
             args  = parts[1:]
 
-        # Registry-based dispatch (supports prefix abbreviation)
+        # registry lookup supports prefix abbreviation
         registry_handler = self._registry.lookup(cmd)
         if registry_handler is not None:
             return registry_handler(args) or False
@@ -357,13 +352,13 @@ class ILXApp:
             rest = raw[len("/add"):].strip()
             before_count = len(self._chat.pinned)
             self._ws.cmd_add(rest, self._chat.pinned)
-            # Sync newly added file into the RAG index
+            # sync the new file into the RAG index so /index explain sees it
             if rest and len(self._chat.pinned) > before_count:
                 new_entry = self._chat.pinned[-1]
                 self._rag.add(rest, new_entry.get("content", ""))
         elif cmd == "/drop":
             self._ws.cmd_drop(args, self._chat.pinned)
-            # Remove dropped file from RAG index
+            # keep RAG in sync when a file is dropped
             if args:
                 self._rag.remove(" ".join(args))
         elif cmd == "/paste":
@@ -551,7 +546,7 @@ class ILXApp:
             )
 
         else:
-            # Try alias expansion before giving up
+            # one more alias check before giving up
             alias_target = self._alias_store.get(cmd.lstrip("/"))
             if alias_target is not None:
                 self._dispatch_command(alias_target)
@@ -560,7 +555,7 @@ class ILXApp:
 
         return False
 
-    # ── Command implementations (delegated to cli/commands/misc_cmds.py) ────────
+    # ── thin wrappers that delegate to misc_cmds / mcp_cmds ────────────────────
 
     def _cmd_version(self) -> None:
         from cli.commands.misc_cmds import cmd_version
@@ -594,7 +589,7 @@ class ILXApp:
                 idx = int(args[0]) - 1
             except ValueError:
                 idx = 0
-        idx = max(0, min(idx, len(sessions) - 1))
+        idx = max(0, min(idx, len(sessions) - 1))  # clamp to valid range
         if self._chat.history:
             from app.core.permissions import confirm
             if not confirm(f"Replace {len(self._chat.history)} current message(s)?", self._cfg):
@@ -606,7 +601,7 @@ class ILXApp:
         print(f"  {GREEN}Resumed {sessions[idx].name} ({len(msgs)} messages){RESET}")
 
     def _permission(self, kind: str, target: str, detail: str) -> bool:
-        """Shared permission callback — prompts the user and returns bool."""
+        """Ask the user whether to allow a sensitive action. Returns bool."""
         from cli.display import RESET, YELLOW
         label = Path(target).name if target else kind
         try:
@@ -686,7 +681,7 @@ class ILXApp:
                     if query in content.lower():
                         snippet = content[:120].replace("\n", " ")
                         hits.append((path.name, meta.get("title", ""), snippet))
-                        break
+                        break  # one hit per session is enough
             except Exception:
                 continue
         if not hits:

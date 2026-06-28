@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.core.config import AppConfig
     from app.core.hybrid_retriever import HybridRetriever
 
+# extensions we're willing to read and inject into context
 _TEXT_EXTS = {
     ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs",
     ".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".env",
@@ -23,6 +24,7 @@ _TEXT_EXTS = {
     ".vcxproj", ".csproj", ".sln",
 }
 
+# directories we never want to walk into
 SKIP_DIRS = {
     ".git", "__pycache__", "node_modules", ".venv", "venv",
     "x64", "x86", "Debug", "Release", ".vs", ".ilxbuild",
@@ -35,19 +37,16 @@ _MAX_TOTAL_CHARS = 40_000
 
 @functools.lru_cache(maxsize=256)
 def _cached_token_estimate(length: int, prefix_hash: int) -> int:
-    """Cached inner computation for estimate_tokens."""
     return max(1, length // 4)
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token estimate: characters // 4 (≈ 1 token per 4 chars for English).
-
-    Caches on (len, hash-of-first-100-chars) to avoid hashing huge strings while
-    still skipping redundant arithmetic for repeated identical inputs.
-    """
+    """Rough token estimate using chars // 4 — good enough for context warnings."""
+    # cache on (length, hash of first 100 chars) to avoid hashing huge strings
     return _cached_token_estimate(len(text), hash(text[:100]))
 
 
+# regex patterns for @path and quoted absolute path detection
 _AT_PATH_RE     = re.compile(r'@"([^"]+)"|@\'([^\']+)\'|@(\S+)')
 _QUOTED_PATH_RE = re.compile(r'"((?:[A-Za-z]:[/\\]|/)[^"]+)"')
 _QUESTION_RE    = re.compile(
@@ -59,18 +58,17 @@ _QUESTION_RE    = re.compile(
 
 
 class ContextManager:
-    """Builds and injects file/workspace context into prompts."""
 
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
         self._repo_map = None
-        self._repo_map_block: str = ""        # cached result updated in background
+        self._repo_map_block: str = ""  # cached prompt block, rebuilt in background
         self._repo_map_lock = threading.Lock()
         self._hybrid: HybridRetriever | None = None  # injected via set_index()
         self._refresh_repo_map()
 
     def set_index(self, retriever: HybridRetriever) -> None:
-        """Inject a HybridRetriever so build_system_prompt() can include project symbols."""
+        """Wire up a HybridRetriever so build_system_prompt() can include project symbols."""
         self._hybrid = retriever
 
     def set_workspace(self, workspace: str) -> None:
@@ -90,7 +88,7 @@ class ContextManager:
             self._repo_map = None
 
     def _schedule_repo_map_rebuild(self) -> None:
-        """Rebuild the repo map in a daemon background thread."""
+        # runs in a daemon thread so startup isn't blocked waiting for the map
         def _build() -> None:
             if self._repo_map is None:
                 return
@@ -122,6 +120,7 @@ class ContextManager:
         except Exception as exc:
             return f"[Context: could not read {path}: {exc}]"
         name = label or str(path)
+        # if the file is huge, extract the most relevant chunks via RAG instead
         if len(text) > _MAX_FILE_CHARS:
             from app.core.rag import build_rag_context
             rag = build_rag_context([(path.name, text)], query="", max_chars=_MAX_FILE_CHARS)
@@ -152,6 +151,7 @@ class ContextManager:
 
         header = f"[Directory: {label or str(path)}]\nFile tree:\n" + "\n".join(tree_lines)
 
+        # if combined size is too big, fall back to RAG chunking across all files
         if total > _MAX_TOTAL_CHARS:
             from app.core.rag import build_rag_context
             rag = build_rag_context(file_tuples, query="", max_chars=_MAX_TOTAL_CHARS)
@@ -166,12 +166,7 @@ class ContextManager:
         return header + "\n\nFile contents:\n\n" + body
 
     def expand_image_paths(self, text: str) -> list[str]:
-        """Return absolute paths for @image references found in *text*.
-
-        Only paths whose extension is in SUPPORTED_EXTENSIONS (vision module)
-        are returned.  Non-image @paths are ignored.  This is a read-only
-        scan — the text is not modified.
-        """
+        """Return absolute paths for @image references found in text."""
         from app.core.vision import extract_image_paths
         return extract_image_paths(text)
 
@@ -213,8 +208,7 @@ class ContextManager:
         if not root or not root.is_dir():
             return ""
         lines: list[str] = []
-        # Sort by depth first (shallow files before nested), then by name so
-        # root-level files (e.g. main.py, README.md) always appear at the top.
+        # shallow files first (root-level things like main.py, README.md), then deeper
         all_paths = [
             p for p in root.rglob("*")
             if not p.is_dir()
@@ -237,6 +231,7 @@ class ContextManager:
             "Be concise and accurate. When showing code, use fenced code blocks."
         )
 
+        # inject project rules at the front so they take priority
         try:
             from app.core import project_rules
             rules_prefix = project_rules.system_prompt_prefix(cfg.working_folder)
@@ -245,7 +240,7 @@ class ContextManager:
         except Exception:
             pass
 
-        # Persistent project memory — inject if workspace has memory
+        # inject persistent project memory so the model knows what we've established
         if cfg.working_folder:
             try:
                 from app.core.project_memory import get_memory
@@ -268,10 +263,10 @@ class ContextManager:
                 map_block = self._repo_map_block
             if map_block:
                 base += "\n\n" + map_block
-            # Trigger a background refresh for the next call
+            # queue a fresh build for the next call
             self._schedule_repo_map_rebuild()
 
-        # Inject project symbols from HybridRetriever when index exists
+        # inject top symbols from the hybrid index when it's available
         if self._hybrid is not None:
             try:
                 index_path = Path(self._cfg.working_folder) / ".project_index" if self._cfg.working_folder else None
@@ -283,6 +278,7 @@ class ContextManager:
                 import logging as _logging
                 _logging.getLogger("ilx_cli.context").debug("hybrid retriever query error: %s", exc)
 
+        # append the current git branch + last commit so the model has ambient context
         try:
             from app.core import git_helper
             git_ctx = git_helper.ambient_context(cfg.working_folder)
@@ -291,11 +287,8 @@ class ContextManager:
         except Exception:
             pass
 
-        # ── Pinned-file injection — strategy differs by provider ──────────────
-        # Cloud models (Anthropic, OpenAI, Groq, Gemini) have large context
-        # windows: inject full content of pinned files directly.
-        # Ollama/local models: rely on RAG-chunked content already embedded in
-        # the pinned messages themselves (built by cmd_add → read_path).
+        # pinned files — cloud models get full content injected here;
+        # Ollama models already see pinned messages as conversation turns
         if pinned:
             is_cloud = getattr(cfg, "provider", "ollama") != "ollama"
             if is_cloud:
@@ -309,8 +302,6 @@ class ContextManager:
                         "\n\n[Pinned files — full content injected for context]\n"
                         + "\n\n".join(pin_blocks)
                     )
-            # For Ollama the pinned messages are passed as conversation turns
-            # (prepended to all_msgs in send()), so no extra injection needed.
 
         return base
 
@@ -320,12 +311,10 @@ class ContextManager:
         from cli.display import BOLD, CYAN, DIM, GREEN, RESET, YELLOW
         print(f"\n{BOLD}Context Window Stats:{RESET}")
 
-        # System prompt
         sp = self.build_system_prompt()
         sp_tokens = estimate_tokens(sp)
         print(f"  {CYAN}System prompt  {RESET}  ~{sp_tokens:>6} tokens  ({len(sp)} chars)")
 
-        # Conversation history
         hist_tokens = estimate_tokens(
             " ".join(m.get("content", "") for m in history)
         )
@@ -334,7 +323,6 @@ class ContextManager:
             f"  ({len(history)} messages)"
         )
 
-        # Pinned context
         if pinned:
             pin_chars = sum(len(p.get("content", "")) for p in pinned)
             pin_tokens = estimate_tokens(" ".join(p.get("content", "") for p in pinned))
@@ -347,7 +335,6 @@ class ContextManager:
             print(f"  {DIM}Pinned files      none{RESET}")
             pin_tokens = 0
 
-        # RAG index stats (if available)
         if rag is not None:
             try:
                 stats = rag.get_stats()
@@ -363,7 +350,7 @@ class ContextManager:
         else:
             print(f"  {DIM}RAG index         not available{RESET}")
 
-        # Persistent project memory stats
+        # show per-category counts from the project memory store
         if self._cfg.working_folder:
             try:
                 from app.core.project_memory import get_memory
@@ -381,18 +368,17 @@ class ContextManager:
             except Exception:
                 pass
 
-        # Total estimate vs context window + compression ratio
+        # show how full the context window is and suggest /compact if close to limit
         total = sp_tokens + hist_tokens + pin_tokens
         num_ctx = getattr(self._cfg, "num_ctx", 4096)
         pct = int(total / num_ctx * 100) if num_ctx else 0
         col = GREEN if pct < 70 else (YELLOW if pct < 90 else "\033[31m")
-        bar_filled = int(pct / 5)   # 20-char bar
+        bar_filled = int(pct / 5)  # 20-char bar
         bar = "#" * bar_filled + "-" * (20 - bar_filled)
         print(
             f"\n  {col}Total  ~{total} tokens  [{bar}]  {pct}%"
             f"  of num_ctx={num_ctx}{RESET}"
         )
-        # Compression ratio: actual text chars vs token estimate
         total_chars = sum(len(m.get("content", "")) for m in history)
         if total_chars > 0:
             ratio = total_chars / max(1, hist_tokens * 4)

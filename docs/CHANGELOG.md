@@ -7,6 +7,32 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.0] — 2026-06-28
+
+First public release.
+
+### Added
+- `/memory` command with subcommands: `show`, `add`, `forget`, `fixes`, `search`, `stats`
+- Persistent project memory backed by SQLite (`<workspace>/.ilx_cli/memory.db`)
+- `/fix-tests` loop now writes fix records to project memory automatically
+- `/debug` command: interactive script runner with stdin passthrough, venv auto-detection, and session logging
+- `/debug log` — view last session output
+- `/debug logs` — list recent debug sessions
+- `/debug analyze` — AI-powered error analysis of a debug session
+- `/symbol <name>` — search the symbol index for matching function and class names
+- `/rag` command with `status`, `bm25`, and `semantic` subcommands for tuning retrieval weights
+- Symbol records written to project memory during `/index build`
+- Python 3.12 as the minimum supported version (previously 3.11)
+- Test coverage raised to 85%
+
+### Changed
+- Version badge and release artifacts updated to 1.0.0
+- USER_MANUAL updated with full sections for `/debug`, `/memory`, `/symbol`, and `/rag`
+- WHITEPAPER updated with architecture sections for Persistent Project Memory and Interactive Debug Runner
+- README comparison table updated to include Persistent Project Memory and Interactive Debug Runner rows
+
+---
+
 ## [0.2.0] — 2026-06-28
 
 ### Added
@@ -53,7 +79,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/ilxstudio/ilx-ai-cli/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/ilxstudio/ilx-ai-cli/releases/tag/v0.3.0
+[Unreleased]: https://github.com/ilxstudio/ilx-ai-cli/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ilxstudio/ilx-ai-cli/releases/tag/v1.0.0
 [0.2.0]: https://github.com/ilxstudio/ilx-ai-cli/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ilxstudio/ilx-ai-cli/releases/tag/v0.1.0

@@ -1,4 +1,4 @@
-"""Terminal display helpers — ANSI colors, banner, formatted output."""
+"""Terminal display helpers — ANSI colors, banner, cost estimation, and formatted output."""
 from __future__ import annotations
 
 import os
@@ -7,6 +7,7 @@ import sys
 
 
 def _enable_ansi() -> None:
+    # Windows needs the VT processing flag set or ANSI codes print as literal text
     if os.name == "nt":
         try:
             import ctypes
@@ -40,16 +41,12 @@ BANNER = (
     "  ██║███████╗██╔╝ ██╗    ██║  ██║██║     ╚██████╗███████╗██║\n"
     "  ╚═╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝      ╚═════╝╚══════╝╚═╝\n"
     f"{RESET}"
-    f"{DIM}              ILX AI CLI  ·  v0.3.0  ·  chat • code • build • test{RESET}\n"
+    f"{DIM}              ILX AI CLI  ·  v1.0.0  ·  chat • code • build • test{RESET}\n"
 )
 
 
-# ---------------------------------------------------------------------------
-# Provider pricing — cost per 1 million tokens (input, output) in USD
-# ---------------------------------------------------------------------------
-
+# cost per 1 million tokens (input, output) in USD, keyed by model substring
 PROVIDER_PRICING: dict[str, dict[str, tuple[float, float]]] = {
-    # provider -> model_substring -> ($/M input, $/M output)
     "anthropic": {
         "claude-opus-4":        (15.00, 75.00),
         "claude-sonnet-4":      (3.00,  15.00),
@@ -60,7 +57,7 @@ PROVIDER_PRICING: dict[str, dict[str, tuple[float, float]]] = {
         "claude-3-opus":        (15.00, 75.00),
         "claude-3-sonnet":      (3.00,  15.00),
         "claude-3-haiku":       (0.25,   1.25),
-        "claude":               (3.00,  15.00),  # fallback
+        "claude":               (3.00,  15.00),  # fallback for unknown claude models
     },
     "openai": {
         "gpt-4o-mini":          (0.15,   0.60),
@@ -89,19 +86,19 @@ PROVIDER_PRICING: dict[str, dict[str, tuple[float, float]]] = {
         "gemini-1.0-pro":       (0.50,   1.50),
         "gemini":               (0.10,   0.40),  # fallback
     },
-    "ollama": {},  # Always free
+    "ollama": {},  # always free
 }
 
 
 def estimate_cost(provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
-    """Return estimated cost in USD, or None if provider/model not in pricing table or is free."""
+    """Return estimated cost in USD, or None if provider/model isn't in the pricing table."""
     if provider == "ollama":
-        return 0.0  # Always free
+        return 0.0
     provider_table = PROVIDER_PRICING.get(provider, {})
     if not provider_table:
         return None
     model_lower = model.lower()
-    # Find the most specific match (longest key that appears in the model name)
+    # pick the most specific key that appears in the model name
     best_key = ""
     best_rate: tuple[float, float] | None = None
     for key, rates in provider_table.items():
@@ -116,7 +113,7 @@ def estimate_cost(provider: str, model: str, prompt_tokens: int, completion_toke
 
 
 def format_cost(cost: float | None, provider: str) -> str:
-    """Format cost as a human-readable string for display."""
+    """Format a cost float as a human-readable string."""
     if provider == "ollama":
         return "FREE (local)"
     if cost is None:
@@ -162,7 +159,7 @@ def print_diff_line(line: str) -> None:
 
 
 def highlight_code(text: str, language: str = "") -> str:
-    """Apply syntax highlighting via Pygments if available, else return plain text."""
+    """Apply Pygments syntax highlighting if available, else return plain text."""
     try:
         from pygments import highlight
         from pygments.formatters import Terminal256Formatter
@@ -182,34 +179,25 @@ def highlight_code(text: str, language: str = "") -> str:
 
 
 def render_chat_response(text: str) -> None:
-    """Print an assistant response, syntax-highlighting fenced code blocks.
-
-    fence_re.split() on a string with N fenced blocks produces a list of the
-    form: [prose0, lang1, code1, prose1, lang2, code2, ..., proseN].
-    We iterate in explicit steps-of-3 to handle trailing prose correctly even
-    when the list length is not a multiple of 3.
-    """
+    """Print an assistant response, syntax-highlighting fenced code blocks."""
     fence_re = re.compile(r"^```(\w*)\s*$", re.MULTILINE)
     parts = fence_re.split(text)
 
+    # fence_re.split produces [prose, lang, code, prose, lang, code, ...] so step by 3
     i = 0
     while i < len(parts):
-        sys.stdout.write(parts[i])           # prose (always present)
+        sys.stdout.write(parts[i])
         if i + 2 < len(parts):
-            lang = parts[i + 1]              # language tag
+            lang = parts[i + 1]
             sys.stdout.write(highlight_code(parts[i + 2], lang))
             i += 3
         else:
-            i += 1                           # trailing prose with no matching fence
+            i += 1  # trailing prose with no closing fence
     sys.stdout.flush()
 
 
 def print_banner() -> None:
-    """Print the startup banner, using Rich Panel styling when available.
-
-    Set the environment variable ``ILX_NO_BANNER=1`` to suppress the banner
-    entirely — useful for scripted or CI invocations.
-    """
+    """Print the startup banner. Set ILX_NO_BANNER=1 to suppress it in CI."""
     if os.environ.get("ILX_NO_BANNER", "").strip() == "1":
         return
     try:

@@ -1,21 +1,4 @@
-"""Pre/Post tool-use hooks — shell-command driven extension points.
-
-Config: ~/.ilx_cli/hooks.json
-Schema:
-    {
-      "PreToolUse":  [{"match": {"tool": "write_file"}, "command": "..."}],
-      "PostToolUse": [{"match": {"tool": "write_file"}, "command": "prettier --write ${path}"}],
-      "UserPromptSubmit": [...],
-      "Stop": [...]
-    }
-
-Exit codes:
-  0        → allow / no-op
-  2        → BLOCK with stderr message (PreToolUse only)
-  other    → log warning, proceed anyway
-
-"async": true → fire-and-forget daemon thread (can't block).
-"""
+"""Pre/Post tool-use hooks — shell-command driven extension points."""
 from __future__ import annotations
 
 import fnmatch
@@ -35,8 +18,7 @@ _DEFAULT_TIMEOUT = 10
 
 KNOWN_EVENTS = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"}
 
-# Centralized sensitive environment variable prefix list.
-# Importable by other modules: ``from app.core.hooks import _SENSITIVE_ENV_PREFIXES``
+# shared prefix list — other modules can import this instead of duplicating it
 _SENSITIVE_ENV_PREFIXES: tuple[str, ...] = (
     "ANTHROPIC_", "OPENAI_", "GROQ_", "GEMINI_", "HUGGINGFACE_", "HF_",
     "AWS_", "AZURE_", "GITHUB_TOKEN", "SENDGRID_", "STRIPE_", "TWILIO_",
@@ -45,7 +27,7 @@ _SENSITIVE_ENV_PREFIXES: tuple[str, ...] = (
     "ILX_",
 )
 
-# Shell metacharacters that must not appear in individual hook command arguments.
+# these chars in a hook argument would mean the user is trying to do shell injection
 _SHELL_METACHARACTERS = frozenset(";|&`$()<>")
 
 _HOME = Path.home()
@@ -67,6 +49,7 @@ class _HookSpec:
     async_:  bool = False
 
 
+# load and parse hooks.json — invalid entries are skipped rather than crashing
 def _load_specs() -> list[_HookSpec]:
     try:
         raw = json.loads(_CFG_PATH.read_text(encoding="utf-8"))
@@ -148,6 +131,7 @@ def _payload_matches(payload: dict, match: dict) -> bool:
     return True
 
 
+# safe Template substitute — missing keys become empty strings instead of raising
 class _SafeFmt(dict):
     def __missing__(self, key: str) -> str:
         return ""
@@ -161,11 +145,7 @@ def _expand(cmd: str, payload: dict) -> str:
 
 
 def _sanitized_env() -> dict[str, str]:
-    """Return a sanitized copy of ``os.environ`` for hook subprocesses.
-
-    Uses ``_SENSITIVE_ENV_PREFIXES`` to strip API keys, tokens, and other
-    secrets before passing environment variables to hook commands.
-    """
+    """Return a sanitized copy of ``os.environ`` for hook subprocesses."""
     env: dict[str, str] = {}
     _bad_suffixes = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
     for k, v in os.environ.items():
@@ -183,13 +163,7 @@ def _sanitized_env() -> dict[str, str]:
 def _validate_hook_command(cmd: list[str]) -> tuple[bool, str]:
     """Validate a hook command list before execution.
 
-    Returns ``(True, "")`` if the command is safe to run, or
-    ``(False, reason)`` if it should be rejected.
-
-    Checks performed:
-    - Rejects any argument containing shell metacharacters (;, |, &, etc.)
-    - Rejects executables that are absolute paths outside the user's home
-      directory or outside a directory on PATH (bare program names are allowed)
+    Returns ``(True, "")`` if safe, or ``(False, reason)`` if it should be rejected.
     """
     if not cmd:
         return False, "empty command"
@@ -203,15 +177,14 @@ def _validate_hook_command(cmd: list[str]) -> tuple[bool, str]:
             )
 
     executable = cmd[0]
-    # Only check paths — bare names (e.g. "git", "python") are resolved via PATH
+    # bare names like "git" or "python" are fine — only check absolute paths
     if os.sep in executable or (os.altsep and os.altsep in executable):
         exec_path = Path(executable)
         if exec_path.is_absolute():
-            # Allow executables inside the user's home directory
             try:
                 exec_path.relative_to(_HOME)
             except ValueError:
-                # Not under home — check if it's on PATH
+                # not under home — only allow if it's the canonical PATH entry
                 import shutil
                 if shutil.which(exec_path.name) != str(exec_path):
                     return False, (
@@ -258,6 +231,7 @@ def trigger(event: str, payload: dict | None = None) -> HookResult:
         if not _payload_matches(payload, spec.match):
             continue
         if spec.async_:
+            # fire and forget — can't block the main flow
             threading.Thread(
                 target=_run_hook, args=(spec, payload), daemon=True,
                 name=f"ilx-hook-{event}",

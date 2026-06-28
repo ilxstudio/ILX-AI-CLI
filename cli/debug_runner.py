@@ -1,25 +1,4 @@
-"""Interactive debug runner — runs a program with live stdin/stdout passthrough.
-
-Unlike the supervisor (which captures stdout/stderr via PIPEs and has no stdin),
-the debug runner connects the child's stdio directly to the terminal so the user
-can interact with input() prompts, while simultaneously tee-ing all output to a
-structured session log for AI error analysis.
-
-Features:
-  • venv auto-detection: uses <workspace>/.venv or <workspace>/venv python if present
-  • stdin passthrough: user types input() responses in real time
-  • tee logging: every stdout/stderr line is written to ~/.ilx_cli/debug/<session>.log
-  • error capture: stderr collected separately; on non-zero exit, returns ErrorReport
-  • session JSON: machine-readable log alongside the human-readable text log
-
-Architecture (Windows & Unix):
-  Windows cannot use PTY/pty module. We use two reader threads (stdout + stderr)
-  that print lines in real time while a main thread forwards stdin lines. This
-  gives interactive-enough behaviour for programs that use line-buffered I/O
-  (which covers virtually all Python input() programs).
-
-Copyright 2026 ILX Studio — MIT License
-"""
+"""Interactive debug runner — runs a program with live stdin/stdout passthrough."""
 from __future__ import annotations
 
 import json
@@ -36,8 +15,6 @@ from typing import Callable
 _LOG_DIR = Path.home() / ".ilx_cli" / "debug"
 
 
-# ── Data classes ────────────────────────────────────────────────────────────────
-
 @dataclass
 class DebugLine:
     ts:      float
@@ -49,7 +26,7 @@ class DebugLine:
 class ErrorReport:
     exit_code:   int
     stderr_text: str
-    error_lines: list[str]        # lines containing "Error", "Traceback", etc.
+    error_lines: list[str]  # lines that look like errors or tracebacks
     log_path:    str
     session_id:  str
     elapsed_s:   float
@@ -88,18 +65,8 @@ class DebugSession:
         return end - self.started_at
 
 
-# ── venv detection ───────────────────────────────────────────────────────────────
-
 def find_python(workspace: str) -> str:
-    """Return the best python executable for *workspace*.
-
-    Preference order:
-      1. <workspace>/.venv/Scripts/python.exe  (Windows venv)
-      2. <workspace>/.venv/bin/python           (Unix venv)
-      3. <workspace>/venv/Scripts/python.exe
-      4. <workspace>/venv/bin/python
-      5. sys.executable                         (current interpreter fallback)
-    """
+    """Return the best python executable for the given workspace — prefers venv over system."""
     wf = Path(workspace)
     candidates = [
         wf / ".venv" / "Scripts" / "python.exe",
@@ -110,23 +77,20 @@ def find_python(workspace: str) -> str:
     for c in candidates:
         if c.is_file():
             return str(c)
-    return sys.executable
+    return sys.executable  # fall back to whatever's running right now
 
 
 def venv_env(workspace: str, python_bin: str) -> dict:
-    """Return an env dict with the venv's site-packages on PYTHONPATH."""
+    """Return an env dict with VIRTUAL_ENV set and the venv Scripts/bin prepended to PATH."""
     import os
     env = dict(os.environ)
     venv_root = Path(python_bin).parent.parent
-    # Activate: set VIRTUAL_ENV, prepend Scripts/bin to PATH
     env["VIRTUAL_ENV"] = str(venv_root)
     scripts = str(venv_root / ("Scripts" if sys.platform == "win32" else "bin"))
     env["PATH"] = scripts + (";" if sys.platform == "win32" else ":") + env.get("PATH", "")
     env.pop("PYTHONHOME", None)
     return env
 
-
-# ── log helpers ──────────────────────────────────────────────────────────────────
 
 def _log_path(session_id: str) -> Path:
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -138,6 +102,7 @@ def _json_path(session_id: str) -> Path:
     return _LOG_DIR / f"{session_id}.json"
 
 
+# substrings that indicate an error line worth flagging
 _ERROR_PATTERNS = (
     "Traceback", "Error:", "Exception:", "FAILED", "error:", "fatal:",
     "PermissionError", "FileNotFoundError", "TypeError", "ValueError",
@@ -149,21 +114,16 @@ def _is_error_line(text: str) -> bool:
     return any(p in text for p in _ERROR_PATTERNS)
 
 
-# ── core runner ─────────────────────────────────────────────────────────────────
-
 def run_interactive(
     script_args: list[str],
     workspace:   str,
     session_id:  str = "",
     on_output:   Callable[[str, str], None] | None = None,
 ) -> ErrorReport:
-    """Run *script_args* interactively with stdin passthrough.
+    """Run script_args interactively with stdin passthrough.
 
-    *on_output(stream, line)* is called for every output line in addition to
-    being printed to the terminal.  This lets the caller accumulate output
-    without blocking.
-
-    Returns an ErrorReport when the process finishes.
+    on_output(stream, line) is called for each output line so callers can accumulate output.
+    Returns an ErrorReport when the process exits.
     """
     if not session_id:
         from datetime import datetime as _dt
@@ -172,14 +132,15 @@ def run_interactive(
     python_bin = find_python(workspace)
     env        = venv_env(workspace, python_bin)
 
-    # Resolve command: auto-prepend python for .py files
+    # auto-prepend python for .py scripts
     from cli.commands.dev_tools import _resolve_run_args
     command = _resolve_run_args(script_args)
-    # Replace 'python' with venv python
+    # swap generic 'python' for the venv python
     if command and command[0] in ("python", "python3"):
         command = [python_bin] + command[1:]
 
     log_file  = _log_path(session_id)
+    log_f     = None
     log_f     = open(log_file, "w", encoding="utf-8", buffering=1)  # noqa: WPS515
 
     lines: list[DebugLine] = []
@@ -257,9 +218,7 @@ def run_interactive(
     t_err.start()
     t_stdin.start()
 
-    # Main loop: forward terminal input to the process.
-    # Wraps input() in OSError guard so it degrades cleanly when stdin is
-    # captured (e.g. pytest) or redirected from a pipe.
+    # forward terminal input to the child process; degrades cleanly if stdin is captured
     exit_code = None
     stdin_available = True
     try:
@@ -282,7 +241,7 @@ def run_interactive(
                 proc.terminate()
                 break
     finally:
-        stdin_q.put(None)   # stop stdin thread
+        stdin_q.put(None)  # signal the stdin thread to stop
         try:
             proc.stdin.close()
         except OSError:
@@ -294,9 +253,10 @@ def run_interactive(
         t_err.join(timeout=2)
         elapsed = time.monotonic() - t0
         _record("system", f"Exit {exit_code}  ({elapsed:.2f}s)")
-        log_f.close()
+        if log_f is not None:
+            log_f.close()
 
-    # Write structured JSON log
+    # write a machine-readable JSON log alongside the human-readable one
     try:
         _json_path(session_id).write_text(
             json.dumps({
@@ -322,8 +282,6 @@ def run_interactive(
         elapsed_s=elapsed,
     )
 
-
-# ── log listing ─────────────────────────────────────────────────────────────────
 
 def list_sessions(limit: int = 10) -> list[Path]:
     if not _LOG_DIR.exists():

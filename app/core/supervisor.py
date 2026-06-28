@@ -1,26 +1,4 @@
-"""Process supervisor — manages all user-spawned subprocesses.
-
-The supervisor runs entirely in the CLI process but each user task runs in
-its own child subprocess via subprocess.Popen.  The CLI never calls exec()
-on user code directly, so a crash, hang, or OOM in user code cannot take
-down the CLI.
-
-Architecture:
-  - ProcessSupervisor   singleton that owns all running tasks
-  - ManagedTask         descriptor for one running/completed task
-  - TaskStatus          enum for task lifecycle states
-
-Thread safety: all mutations protected by a single RLock so callers from
-the REPL thread and background reader threads never corrupt the registry.
-
-Process management:
-  - On Windows, taskkill /F /T kills the entire process tree.
-  - On Unix, processes are launched in their own session (os.setsid) and
-    killed via os.killpg so the whole process group is reaped.
-  - Timeout enforcement warns at 80% elapsed before killing at 100%.
-  - A task queue (max_concurrent=4) prevents runaway parallelism.
-  - shutdown() drains or force-kills all tasks and blocks new submissions.
-"""
+"""Process supervisor — manages all user-spawned subprocesses."""
 from __future__ import annotations
 
 import collections
@@ -38,6 +16,7 @@ from pathlib import Path
 
 _log = logging.getLogger("ilx_cli.supervisor")
 
+# maps script extensions to their interpreter so we can print a helpful hint on failure
 _SCRIPT_HINTS: dict[str, str] = {
     ".py":  "python",
     ".pyw": "python",
@@ -51,7 +30,6 @@ _SCRIPT_HINTS: dict[str, str] = {
 
 
 def _hint_for_script(command: list[str]) -> None:
-    """Print a helpful suggestion when a bare script file fails to launch."""
     if not command:
         return
     ext = Path(command[0]).suffix.lower()
@@ -72,7 +50,6 @@ class TaskStatus(str, Enum):
 
 @dataclass
 class ManagedTask:
-    """Descriptor for one supervised task."""
     task_id:    str
     label:      str
     command:    list[str]
@@ -98,11 +75,9 @@ class ManagedTask:
         return f"[{self.task_id}] {self.status.value:<10}  {elapsed_s:<8}{pid_s}{code_s}  {self.label}"
 
 
-# ── Queued task descriptor ────────────────────────────────────────────────────
-
+# holds everything needed to start a queued task once a slot opens up
 @dataclass
 class _QueuedItem:
-    """Holds arguments for a task waiting in the queue."""
     task_id:   str
     command:   list[str]
     label:     str
@@ -114,7 +89,6 @@ class _QueuedItem:
 
 
 class ProcessSupervisor:
-    """Singleton process supervisor.  Spawn every user task through here."""
 
     _MAX_TAIL       = 100   # lines of output kept per task
     _NEXT_ID        = 1
@@ -143,7 +117,6 @@ class ProcessSupervisor:
 
         If the concurrency limit has been reached, the task is queued and
         started automatically when a running task finishes.
-
         Raises RuntimeError if shutdown() has been called.
         Returns the ManagedTask immediately (non-blocking).
         """
@@ -160,7 +133,7 @@ class ProcessSupervisor:
                 1 for t in self._tasks.values() if t.status == TaskStatus.RUNNING
             )
             if running_count >= self._max_concurrent:
-                # Queue the task instead of starting it immediately.
+                # queue instead of launching — _on_task_done will start it later
                 task = ManagedTask(
                     task_id=task_id,
                     label=label or " ".join(command[:3]),
@@ -197,7 +170,6 @@ class ProcessSupervisor:
         on_finish: Callable[[ManagedTask], None] | None,
         env:       dict | None,
     ) -> ManagedTask:
-        """Internal: actually start the subprocess."""
         task = ManagedTask(
             task_id=task_id,
             label=label or " ".join(command[:3]),
@@ -205,10 +177,9 @@ class ProcessSupervisor:
             cwd=cwd,
         )
 
-        # Build platform-specific Popen kwargs for process-group isolation.
         # stderr=PIPE (not STDOUT) avoids WinError 6 when pytest captures the
         # parent's stdout — merging via STDOUT reuses the same handle which
-        # can become invalid under capsys.
+        # can become invalid under capsys
         popen_kwargs: dict = dict(
             cwd=cwd,
             stdout=subprocess.PIPE,
@@ -220,7 +191,7 @@ class ProcessSupervisor:
         )
         if sys.platform == "win32":
             # CREATE_NEW_PROCESS_GROUP only — avoids WinError 6/50 that occur when
-            # CREATE_NO_WINDOW is combined with PIPE stdio in headless/pytest contexts.
+            # CREATE_NO_WINDOW is combined with PIPE stdio in headless/pytest contexts
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             popen_kwargs["close_fds"] = True
@@ -260,7 +231,7 @@ class ProcessSupervisor:
             self._tasks[task_id] = task
             self._procs[task_id] = proc
 
-        # Reader thread — drains stdout, applies timeout, calls callbacks.
+        # reader thread drains stdout and enforces the timeout
         t = threading.Thread(
             target=self._reader,
             args=(task_id, proc, timeout, on_line, on_finish),
@@ -268,7 +239,7 @@ class ProcessSupervisor:
             name=f"ilx-reader-{task_id}",
         )
         t.start()
-        # Stderr drain thread — prevents child blocking on a full stderr pipe.
+        # separate stderr drain thread so the child never blocks on a full pipe
         if proc.stderr is not None:
             t_err = threading.Thread(
                 target=self._drain_stderr,
@@ -288,7 +259,7 @@ class ProcessSupervisor:
         on_line:   Callable[[str], None] | None = None,
         env:       dict | None = None,
     ) -> ManagedTask:
-        """Spawn and block until the task finishes.  Returns completed ManagedTask."""
+        """Spawn and block until the task finishes. Returns completed ManagedTask."""
         done = threading.Event()
         task_ref: list[ManagedTask] = []
 
@@ -321,23 +292,22 @@ class ProcessSupervisor:
         return self._kill_proc(tid, proc)
 
     def _kill_proc(self, tid: str, proc: subprocess.Popen) -> bool:
-        """Kill *proc* and its entire process tree."""
         try:
             if sys.platform == "win32":
-                # taskkill /T kills the entire process tree, /F forces immediate kill.
+                # taskkill /T kills the entire process tree, /F forces immediate kill
                 subprocess.run(
                     ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                     capture_output=True,
                 )
             else:
-                # Send SIGTERM to the whole process group.
+                # send SIGTERM to the whole process group first
                 try:
                     pgid = os.getpgid(proc.pid)
                     os.killpg(pgid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass  # already gone
 
-                # Escalate to SIGKILL after 5 s if still alive.
+                # escalate to SIGKILL after 5s if the process is still alive
                 def _escalate():
                     time.sleep(5)
                     try:
@@ -408,17 +378,15 @@ class ProcessSupervisor:
         return lines
 
     def shutdown(self, drain: bool = True, timeout: float = 10.0) -> None:
-        """Shut down the supervisor.
+        """Drain or force-kill all tasks and block new submissions.
 
         If *drain* is True, waits up to *timeout* seconds for running tasks to
-        finish naturally before force-killing them.  Always clears the queue and
-        prevents new task submissions.
-
-        After this call, ``submit()`` / ``spawn()`` raise ``RuntimeError``.
+        finish naturally before force-killing them.
+        After this call, spawn() raises RuntimeError.
         """
         with self._lock:
             self._shutting_down = True
-            # Discard queued (not yet started) tasks immediately.
+            # drop everything waiting in the queue — no point starting them
             queued_ids = [item.task_id for item in self._queue]
             self._queue.clear()
             for qid in queued_ids:
@@ -438,7 +406,6 @@ class ProcessSupervisor:
                     break
                 time.sleep(0.1)
 
-        # Force-kill anything still running.
         self.kill_all()
 
     def save_registry(self, limit: int = 50) -> None:
@@ -509,16 +476,12 @@ class ProcessSupervisor:
         return max(running, key=lambda t: t.started_at).task_id
 
     def _on_task_done(self, finished_task_id: str) -> None:
-        """Called from the reader thread when a task finishes.
-
-        Pops the next queued item (if any) and starts it.
-        """
+        # pop the next item from the queue and start it now that a slot is free
         with self._lock:
             if not self._queue or self._shutting_down:
                 return
             item = self._queue.popleft()
 
-        # Start the queued task outside the lock.
         _log.info("Starting queued task %s after %s finished", item.task_id, finished_task_id)
         self._launch(
             item.task_id,
@@ -539,7 +502,6 @@ class ProcessSupervisor:
         on_line:   Callable[[str], None] | None,
         on_finish: Callable[[ManagedTask], None] | None,
     ) -> None:
-        """Background reader thread — drains stdout, enforces timeout."""
         deadline      = time.monotonic() + timeout if timeout else None
         warn_at       = time.monotonic() + timeout * 0.8 if timeout else None
         timed_out     = False
@@ -560,7 +522,7 @@ class ProcessSupervisor:
 
                 now = time.monotonic()
 
-                # 80% warning — append to output_tail (once only).
+                # warn once at 80% of the timeout so the user isn't caught off guard
                 if warn_at and not warned and now >= warn_at:
                     warned = True
                     with self._lock:
@@ -573,7 +535,6 @@ class ProcessSupervisor:
                         task.output_tail.append(warn_msg)
                     _log.warning("Task %s approaching timeout (%s/%ss)", task_id, f"{elapsed:.0f}", timeout)
 
-                # 100% — kill.
                 if deadline and now > deadline:
                     timed_out = True
                     _log.warning("Task %s exceeded timeout, killing", task_id)
@@ -607,7 +568,6 @@ class ProcessSupervisor:
                 task.status = TaskStatus.FAILED
             self._procs.pop(task_id, None)
 
-        # Persist completed task to disk.
         try:
             self.save_registry()
         except Exception as exc:
@@ -619,10 +579,10 @@ class ProcessSupervisor:
             except Exception as exc:
                 _log.warning("Supervisor on_finish callback error for task %s: %s", task_id, exc)
 
-        # Advance the queue — start next waiting task if any.
+        # start next queued task now that this one is done
         self._on_task_done(task_id)
 
-        # Record crash for non-zero exits that aren't user-initiated kills.
+        # record crashes for non-zero exits that aren't user-initiated kills
         if exit_code not in (0, None) and not timed_out:
             _kill_codes = {-9, -15, 130, 137}
             if exit_code not in _kill_codes:
@@ -634,11 +594,8 @@ class ProcessSupervisor:
                     _log.warning("Supervisor crash_db record failed for task %s: %s", task_id, exc)
 
     def _drain_stderr(self, task_id: str, proc: subprocess.Popen) -> None:
-        """Drain proc.stderr so the child never blocks on a full pipe.
-
-        Lines are appended to the task's output_tail so they appear in
-        /run output alongside stdout.  This runs in its own daemon thread.
-        """
+        # keep reading stderr so the child never blocks on a full pipe
+        # lines are appended to output_tail so they show up alongside stdout in /run
         if proc.stderr is None:
             return
         try:
@@ -657,5 +614,5 @@ class ProcessSupervisor:
                 pass
 
 
-# Module-level singleton — import and use directly
+# module-level singleton — import and use directly
 supervisor = ProcessSupervisor()

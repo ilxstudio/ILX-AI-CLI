@@ -1,15 +1,4 @@
-"""Persistent project memory — survives session restarts.
-
-Stores structured knowledge about a project in an SQLite database at
-~/.ilx_cli/memory/<workspace_hash>.db.  The database holds:
-
-  • facts    — freeform notes the agent or user records
-  • symbols  — function/class signatures indexed for quick recall
-  • fixes    — past fix decisions (file, problem, solution)
-  • rules    — per-project preferences that survive rules.md
-
-Copyright 2026 ILX Studio — MIT License
-"""
+"""Persistent project memory — survives session restarts."""
 from __future__ import annotations
 
 import hashlib
@@ -25,6 +14,8 @@ from typing import Any
 _log = logging.getLogger("ilx_cli.project_memory")
 
 _MEM_DIR = Path.home() / ".ilx_cli" / "memory"
+
+# schema for the three tables we need — runs at connect time via executescript
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS facts (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +48,7 @@ CREATE INDEX IF NOT EXISTS ix_fixes_file ON fixes (file_path);
 """
 
 
+# hash the workspace path so each project gets its own db file
 def _db_path(workspace: str) -> Path:
     h = hashlib.sha256(workspace.encode()).hexdigest()[:16]
     return _MEM_DIR / f"{h}.db"
@@ -90,7 +82,6 @@ class SymbolRecord:
 
 
 class ProjectMemory:
-    """Thread-safe SQLite-backed memory store for a single workspace."""
 
     def __init__(self, workspace: str, session_id: str = "") -> None:
         self._workspace = workspace
@@ -108,6 +99,7 @@ class ProjectMemory:
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
+    # single place for all db writes so we don't sprinkle try/except everywhere
     def _exec(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         with self._lock:
             try:
@@ -266,7 +258,7 @@ class ProjectMemory:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton (one per process, keyed by workspace)
+# one instance per workspace path — avoids opening the same db file twice
 # ---------------------------------------------------------------------------
 
 _INSTANCES: dict[str, ProjectMemory] = {}

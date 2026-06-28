@@ -1,6 +1,4 @@
-"""Git commands — /git status/diff/commit/log/pull/push/stash/revert/reset/ai-commit
-and /branch.
-"""
+"""Git commands — /git status/diff/commit/log/pull/push/stash/revert/reset/ai-commit and /branch."""
 from __future__ import annotations
 
 import datetime
@@ -14,12 +12,9 @@ from cli.display_compat import out, out_error, out_result, out_status
 
 _log = logging.getLogger("ilx_cli.git")
 
-# ---------------------------------------------------------------------------
-# Helpers shared across sub-commands
-# ---------------------------------------------------------------------------
 
 def _repo_check(wf: str) -> bool:
-    """Return True if *wf* is a git repository, print an error and return False otherwise."""
+    """Return True if wf is a git repo, print an error and return False if not."""
     from app.core import git_helper
     from cli.display import RESET, YELLOW
     if not git_helper.is_git_repo(wf):
@@ -29,11 +24,7 @@ def _repo_check(wf: str) -> bool:
 
 
 def _confirm(prompt: str, cfg=None) -> bool:
-    """Prompt user for y/N via the permission engine (respects auto_yes/dry_run).
-
-    When *cfg* is provided, delegates to ``permissions.confirm`` for audit
-    trail and auto_yes/dry_run support.  Falls back to raw input otherwise.
-    """
+    """Prompt y/N, delegating to the permission engine when cfg is available."""
     if cfg is not None:
         from app.core.permissions import confirm as _perm_confirm
         return _perm_confirm(prompt.strip().rstrip("[y/N] ").rstrip(": ").strip(), cfg)
@@ -44,22 +35,13 @@ def _confirm(prompt: str, cfg=None) -> bool:
     return ans in ("y", "yes")
 
 
-# ---------------------------------------------------------------------------
-# Main command class
-# ---------------------------------------------------------------------------
-
 class GitCommands:
-    """Handles /git and /branch slash commands."""
 
     def __init__(self, cfg: AppConfig) -> None:
         self.cfg = cfg
 
     def _wf(self) -> str | None:
         return self.cfg.working_folder or None
-
-    # ------------------------------------------------------------------
-    # /git dispatcher
-    # ------------------------------------------------------------------
 
     def cmd_git(self, args: list[str]) -> None:
         from cli.display import RESET, YELLOW
@@ -104,10 +86,6 @@ class GitCommands:
                 f"Try: status, diff, log, commit, pull, push, stash, "
                 f"revert, reset, ai-commit{RESET}"
             )
-
-    # ------------------------------------------------------------------
-    # Sub-command implementations
-    # ------------------------------------------------------------------
 
     def _git_status(self, wf: str) -> None:
         from app.core import git_helper
@@ -154,20 +132,14 @@ class GitCommands:
         out("")
 
     def _git_commit(self, wf: str, args: list[str]) -> None:
-        """Stage all tracked changes and commit.
-
-        Usage:
-          /git commit -m "message"
-          /git commit "message"      (shorthand)
-          /git commit                (prompts interactively)
-        """
+        """Stage all tracked changes and commit with the given or prompted message."""
         from app.core import git_helper
         from cli.display import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
 
-        # Parse message from args
+        # accept -m "msg", "msg", or no args (prompt interactively)
         msg = ""
         remaining = list(args)
         if remaining and remaining[0] in ("-m", "--message"):
@@ -176,7 +148,7 @@ class GitCommands:
             msg = " ".join(remaining).strip().strip('"').strip("'")
 
         if not msg:
-            # Show changed files first so the user knows what they're committing
+            # show what's about to be committed before asking for a message
             s = git_helper.status(wf)
             files = s.staged + s.modified + s.deleted
             if files:
@@ -198,7 +170,6 @@ class GitCommands:
             out(f"  {YELLOW}Commit cancelled — empty message.{RESET}")
             return
 
-        # Permission gate
         if not _confirm(f"  {YELLOW}Commit all staged/modified changes? [y/N]{RESET} ", self.cfg):
             out_status(f"  {DIM}Commit cancelled.{RESET}")
             return
@@ -217,10 +188,9 @@ class GitCommands:
         if not _repo_check(wf):
             return
 
-        # Allow /git log -N
         n = 10
         if args and args[0].lstrip("-").isdigit():
-            n = min(50, int(args[0].lstrip("-")))
+            n = min(50, int(args[0].lstrip("-")))  # cap at 50 to avoid huge output
 
         rc, sout, _ = git_helper._run(["log", "--oneline", f"-{n}"], wf)
         if rc == 0 and sout:
@@ -243,7 +213,7 @@ class GitCommands:
         if ok:
             text = pull_out or "Already up to date."
             out_result(f"  {GREEN}Pull complete:{RESET} {text}")
-            # Surface conflict hints
+            # surface conflict hints so the user knows what to do next
             if "CONFLICT" in text.upper():
                 out(f"  {YELLOW}Conflicts detected — resolve manually then commit.{RESET}")
         else:
@@ -261,7 +231,7 @@ class GitCommands:
         force = "--force" in args or "-f" in args
 
         if force:
-            # Hard block: require explicit typed confirmation
+            # require typing "yes" for force-push — y/N is too easy to fat-finger
             out(f"  {YELLOW}WARNING: Force-push will rewrite remote history.{RESET}")
             try:
                 ans = input(
@@ -316,7 +286,6 @@ class GitCommands:
                 out_error(f"  {RED}Stash pop failed:{RESET} {stash_out}")
             return
 
-        # Default: save stash
         ok, stash_out = git_helper.stash(wf, "")
         if ok:
             out_result(f"  {GREEN}Changes stashed:{RESET} {stash_out or 'Done.'}")
@@ -336,7 +305,7 @@ class GitCommands:
 
         commit_hash = args[0]
 
-        # Show what will be reverted
+        # show what will change before asking the user to confirm
         ok, preview = git_helper.show_commit(wf, commit_hash)
         if not ok:
             out_error(f"  {RED}Cannot preview commit '{commit_hash}':{RESET} {preview}")
@@ -361,18 +330,13 @@ class GitCommands:
             out_error(f"  {RED}Revert failed:{RESET} {revert_out}")
 
     def _git_reset(self, wf: str, args: list[str]) -> None:
-        """Safe reset: unstage a specific file only.
-
-        Usage: /git reset HEAD <file>
-        /git reset --hard is explicitly blocked.
-        """
+        """Unstage a specific file only. --hard is blocked because it loses work."""
         from app.core import git_helper
         from cli.display import DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
 
-        # Block --hard explicitly
         if "--hard" in args:
             out_error(
                 f"  {RED}Blocked:{RESET} /git reset --hard is not supported. "
@@ -380,7 +344,7 @@ class GitCommands:
             )
             return
 
-        # Normalise: accept "HEAD <file>" or just "<file>"
+        # accept "HEAD <file>" or just "<file>"
         remaining = [a for a in args if a not in ("HEAD", "--")]
         if not remaining:
             out(f"  {YELLOW}Usage: /git reset HEAD <file>  — unstage a specific file{RESET}")
@@ -395,14 +359,14 @@ class GitCommands:
             out_error(f"  {RED}Reset failed:{RESET} {reset_out}")
 
     def _git_ai_commit(self, wf: str) -> None:
-        """Generate a commit message via the LLM from the staged diff, then commit."""
+        """Ask the LLM to write a commit message from the diff, then commit if approved."""
         from app.core import git_helper
         from cli.display import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
 
         if not _repo_check(wf):
             return
 
-        # Collect staged diff; fall back to full diff if nothing staged
+        # prefer staged diff; fall back to full diff so the command still works before staging
         staged = git_helper.staged_diff(wf)
         if not staged or not staged.strip():
             full = git_helper.diff(wf)
@@ -417,7 +381,7 @@ class GitCommands:
         else:
             diff_text = staged
 
-        # Truncate for LLM context (keep first 400 lines)
+        # truncate large diffs so they don't blow out the LLM context
         lines = diff_text.splitlines()
         if len(lines) > 400:
             diff_text = "\n".join(lines[:400]) + "\n\n[diff truncated]"
@@ -435,7 +399,6 @@ class GitCommands:
             "Commit message:"
         )
 
-        # Call the LLM via the configured provider (same pattern as /scaffold)
         try:
             import concurrent.futures as _cf
 
@@ -452,7 +415,6 @@ class GitCommands:
             out_error(f"  {RED}LLM returned an empty message.{RESET}")
             return
 
-        # Show the generated message
         out(f"\n  {BOLD}Generated commit message:{RESET}\n")
         for line in message.splitlines():
             out(f"  {CYAN}{line}{RESET}")
@@ -478,7 +440,6 @@ class GitCommands:
             out_status(f"  {DIM}AI commit cancelled.{RESET}")
             return
 
-        # Permission gate
         if not _confirm(
             f"  {YELLOW}Commit all staged/modified changes with this message? [y/N]{RESET} ",
             self.cfg,
@@ -492,10 +453,6 @@ class GitCommands:
             out_result(f"  {GREEN}Committed: {first_line}{RESET}")
         else:
             out_error(f"  {RED}Commit failed: {ai_commit_out}{RESET}")
-
-    # ------------------------------------------------------------------
-    # /diff command (standalone, kept for backward compat)
-    # ------------------------------------------------------------------
 
     def cmd_diff(self, args: list[str]) -> None:
         from cli.display import BOLD, DIM, RESET, print_diff_line
@@ -530,12 +487,8 @@ class GitCommands:
             from cli.display import RED
             out_error(f"  {RED}git diff timed out.{RESET}")
 
-    # ------------------------------------------------------------------
-    # /diff explain — AI explanation of current diff
-    # ------------------------------------------------------------------
-
     def cmd_diff_explain(self, args: list[str]) -> None:
-        """Explain the current git diff in plain English using the LLM."""
+        """Ask the LLM to explain the current diff in plain English."""
         from app.core import git_helper
         from cli.display import BOLD, DIM, RED, RESET, YELLOW
 
@@ -550,14 +503,12 @@ class GitCommands:
 
         diff_text = git_helper.diff(wf, staged=staged_only)
         if not diff_text or not diff_text.strip():
-            # Try staged if unstaged was empty
             if not staged_only:
                 diff_text = git_helper.diff(wf, staged=True)
         if not diff_text or not diff_text.strip():
             out_status(f"  {DIM}No changes to explain.{RESET}")
             return
 
-        # Truncate to avoid oversized context
         lines = diff_text.splitlines()
         if len(lines) > 400:
             diff_text = "\n".join(lines[:400]) + "\n\n[diff truncated]"
@@ -586,10 +537,6 @@ class GitCommands:
         except Exception as exc:
             out_error(f"  {RED}LLM call failed:{RESET} {exc}")
 
-    # ------------------------------------------------------------------
-    # /branch command
-    # ------------------------------------------------------------------
-
     def cmd_branch(self, args: list[str]) -> None:
         from app.core import git_helper
         from cli.display import CYAN, GREEN, RED, RESET, YELLOW
@@ -607,6 +554,7 @@ class GitCommands:
         if args:
             branch_name = args[0]
         else:
+            # auto-name with a timestamp so it's always unique
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             branch_name = f"ilx/task-{ts}"
 

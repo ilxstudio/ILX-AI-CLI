@@ -1,40 +1,4 @@
-"""Lightweight conversation-file RAG for Ollama / local models.
-
-Why local models only?
-----------------------
-Cloud models (Claude 1M, Gemini 2M, GPT-5 200k+) have enough context
-window that whole-file injection is fine and *higher quality* than RAG —
-the model can see relationships across the entire document.  Ollama-
-hosted models top out at 4–32k tokens; injecting a 200 KB document
-truncates the model's actual reasoning room and tends to push the user's
-question off the front of the prompt.
-
-So: when the active model is local, we run a small in-process retrieval
-pass over the attached files and inject only the top-K most relevant
-chunks instead of the whole content.  For cloud models we leave the
-caller's existing whole-file path alone.
-
-Design choices
---------------
-- **No embeddings**.  Real embedding-based retrieval would mean either
-  shipping a model with the desktop (50–500 MB) or relying on a portal
-  ``/api/embed`` round-trip (latency + offline failure).  BM25 over
-  whitespace tokens is simpler, deterministic, has no dependencies, and
-  is the right tool for "find passages that mention these words" — which
-  is what most attachment-aware chats actually want.
-- **Per-call chunking**.  We rebuild the index every time prepare runs.
-  Conversations rarely have hundreds of files; the work is millisecond-
-  scale and avoids stale-cache bugs.
-- **Citations preserved**.  Each emitted chunk is prefixed with
-  ``[File: name, lines a-b]`` so the model can quote them back to the
-  user with provenance.
-
-Public API
-----------
-- :func:`is_local_model(name)` — heuristic; True for Ollama-style ids.
-- :func:`build_rag_context(files, query, *, max_chars)` — returns the
-  formatted ``file_context`` string ready for ``stream_chat``.
-"""
+"""Lightweight conversation-file RAG for Ollama / local models."""
 from __future__ import annotations
 
 import logging
@@ -47,16 +11,12 @@ from app.core.thread_pool import pool as _pool
 
 _log = logging.getLogger("ilx_cli.rag")
 
-# Chunk targets.  Tuned for 8 KB cumulative budget (typical Ollama
-# 4k-token window with room for the user's prompt + system prompt).
+# chunk size tuned for an ~8KB budget — leaves room for the prompt and system context
 _CHUNK_LINES_TARGET = 24
 _CHUNK_LINES_OVERLAP = 4
 _MIN_CHUNK_CHARS = 80
 
-
-# Cloud model id prefixes / substrings — anything matching one of these
-# is **not** routed through RAG.  Conservative: when unsure, treat the
-# model as cloud and keep whole-file behaviour.
+# anything matching one of these is a cloud model — skip RAG and send whole files instead
 _CLOUD_MARKERS = (
     "claude", "gpt-", "gpt4", "gpt5", "gemini", "groq", "anthropic",
     "openai", "o3", "o4", "o5", "deepseek-cloud",
@@ -64,11 +24,7 @@ _CLOUD_MARKERS = (
 
 
 def is_local_model(name: str) -> bool:
-    """Best-effort 'is this an Ollama / local model?' check.
-
-    Returns True when no cloud markers are detected — defaulting to local
-    so Ollama-tagged ids without obvious naming still take the RAG path.
-    """
+    """Best-effort check for whether the model is local (Ollama) vs cloud."""
     if not name:
         return False
     lower = name.lower()
@@ -88,11 +44,7 @@ class Chunk:
 
 
 def chunk_text(filename: str, content: str) -> list[Chunk]:
-    """Break a file into ~24-line chunks with 4-line overlap.
-
-    Lines under :data:`_MIN_CHUNK_CHARS` worth of content get folded
-    into the next chunk so we don't ship near-empty fragments.
-    """
+    """Break a file into ~24-line chunks with 4-line overlap."""
     if not content.strip():
         return []
     lines = content.splitlines()
@@ -104,6 +56,7 @@ def chunk_text(filename: str, content: str) -> list[Chunk]:
     while i < n:
         end = min(i + _CHUNK_LINES_TARGET, n)
         body = "\n".join(lines[i:end]).rstrip()
+        # fold tiny chunks into the previous one to avoid shipping near-empty fragments
         if len(body) >= _MIN_CHUNK_CHARS or i == 0 or not out:
             out.append(Chunk(
                 file       = filename,
@@ -153,22 +106,14 @@ def _bm25_score(
     return score
 
 
+# above this threshold it's worth paying the thread-dispatch overhead
 _PARALLEL_CHUNK_THRESHOLD = 50
 
 
 def rank_chunks_scored(
     chunks: list[Chunk], query: str, *, top_k: int
 ) -> list[tuple[float, Chunk]]:
-    """Return up to ``top_k`` (score, chunk) pairs sorted by descending BM25 score.
-
-    Scores are raw BM25 values.  Returns zero-scored pairs when the query is
-    empty or no term matches — never an empty list (unless ``chunks`` is empty).
-
-    When the chunk list exceeds ``_PARALLEL_CHUNK_THRESHOLD`` (50), scoring is
-    distributed across the shared thread pool to reduce wall-clock time on
-    large document sets.  For smaller lists the overhead of thread dispatch
-    outweighs the benefit, so the sequential path is taken.
-    """
+    """Return up to ``top_k`` (score, chunk) pairs sorted by descending BM25 score."""
     if not chunks:
         return []
     if not query.strip():
@@ -183,7 +128,7 @@ def rank_chunks_scored(
     n_docs = len(docs)
 
     if n_docs > _PARALLEL_CHUNK_THRESHOLD:
-        # Score chunks in parallel using the shared thread pool.
+        # large doc sets get scored in parallel to keep things snappy
         def _score_pair(pair: tuple[list[str], Chunk]) -> tuple[float, Chunk]:
             d, c = pair
             return (_bm25_score(q_tokens, d, avg_dl, df, n_docs), c)
@@ -215,15 +160,7 @@ def build_rag_context(
     max_chars: int = 8_000,
     top_k:     int = 6,
 ) -> str:
-    """Produce a ready-to-inject ``file_context`` string from ``files``.
-
-    ``files`` is ``[(filename, content), ...]``.  The result uses
-    ``[File: name, lines a-b]`` headers followed by the chunk body.
-
-    Total output size is capped at ``max_chars`` (default 8 KB) so we
-    don't blow past the local model's context regardless of how many
-    chunks BM25 scored highly.
-    """
+    """Produce a ready-to-inject ``file_context`` string from ``files``."""
     if not files:
         return ""
     all_chunks: list[Chunk] = []
@@ -253,18 +190,7 @@ def _render_chunks(chunks: list[Chunk], *, max_chars: int) -> str:
 # ── Stateful RAG index ───────────────────────────────────────────────────────
 
 class RAG:
-    """Stateful in-process RAG index over (filename, content) pairs.
-
-    Supports incremental add/remove so that /add and /drop commands can
-    keep the index in sync with the pinned-file list.
-
-    Public API
-    ----------
-    - ``add(filename, content)``       — index a file (replaces if already present)
-    - ``remove(filename)``             — remove a file from the index
-    - ``query(text, *, top_k, max_chars)`` — retrieve relevant chunks
-    - ``get_stats()``                  — return index statistics dict
-    """
+    """Stateful in-process RAG index over (filename, content) pairs."""
 
     _MAX_FILES: int = 500
     _MAX_CACHE: int = 128  # LRU cap — prevents unbounded growth in long sessions
@@ -282,7 +208,7 @@ class RAG:
         self._cache_version += 1
         self._query_cache.clear()  # type: ignore[attr-defined]
         _log.debug("RAG: added %s (%d chars)", filename, len(content))
-        # Evict oldest file if cap exceeded (FIFO — dict preserves insertion order)
+        # evict oldest file when we hit the cap — dict preserves insertion order so FIFO is easy
         if len(self._files) > self._MAX_FILES:
             oldest_key = next(iter(self._files))
             del self._files[oldest_key]
@@ -296,7 +222,7 @@ class RAG:
             self._query_cache.clear()
             _log.debug("RAG: removed %s", filename)
             return True
-        # Also try a substring match (drop by path suffix)
+        # also try a substring match so /drop works with partial paths
         for key in list(self._files):
             if filename in key or key in filename:
                 del self._files[key]
@@ -315,12 +241,8 @@ class RAG:
     # ── Query ────────────────────────────────────────────────────────────────
 
     def query(self, text: str, *, top_k: int = 6, max_chars: int = 8_000) -> str:
-        """Return BM25-ranked chunks relevant to *text*.
-
-        Results are cached per (version, top_k, max_chars, text) key using an
-        LRU OrderedDict capped at _MAX_CACHE entries.  The cache is invalidated
-        whenever add(), remove(), or clear() is called.
-        """
+        """Return BM25-ranked chunks relevant to *text*."""
+        # cache key includes version so stale results can't leak after add/remove
         cache_key = f"{self._cache_version}:{top_k}:{max_chars}:{text}"
         if cache_key in self._query_cache:
             self._query_cache.move_to_end(cache_key)
@@ -337,14 +259,7 @@ class RAG:
     # ── Stats ────────────────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
-        """Return index statistics.
-
-        Keys
-        ----
-        ``chunks``      — total number of chunks across all indexed files
-        ``files``       — list of indexed filenames
-        ``total_chars`` — total character count of all indexed content
-        """
+        """Return index statistics."""
         all_chunks: list[Chunk] = []
         total_chars = 0
         for name, content in self._files.items():

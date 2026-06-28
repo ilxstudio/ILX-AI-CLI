@@ -1,13 +1,4 @@
-"""Centralised subprocess helper — fixes Windows handle issues.
-
-Use this instead of calling subprocess.run() directly throughout the codebase.
-Key guarantees:
-  - Never uses shell=True
-  - Handles Windows-specific console-window suppression (avoids WinError 6)
-  - Always decodes stdout/stderr as UTF-8 with errors="replace"
-  - Gracefully handles FileNotFoundError and TimeoutExpired
-  - Sanitizes the child environment by default (strips API keys and secrets)
-"""
+"""Centralised subprocess helper — fixes Windows handle issues."""
 from __future__ import annotations
 
 import os
@@ -15,14 +6,14 @@ import platform
 import subprocess
 from dataclasses import dataclass
 
-# Environment variable prefixes that should never be exposed to child processes.
+# keys that should never reach a child process — API keys, secrets, tokens
 _SENSITIVE_ENV_PREFIXES = (
     "ANTHROPIC_", "OPENAI_", "GROQ_", "GEMINI_", "HUGGINGFACE_", "HF_",
     "AWS_", "AZURE_", "GITHUB_TOKEN", "SENDGRID_", "STRIPE_", "TWILIO_",
     "ILX_KEY",
 )
 
-# Safe environment variables that are always passed through.
+# non-secret keys that are always safe to pass through
 _SAFE_ENV_KEYS = {
     "PATH", "PYTHONPATH", "SYSTEMROOT", "COMSPEC", "HOME", "USERPROFILE",
     "USERNAME", "LANG", "TZ", "TERM", "COLORTERM", "COLUMNS", "LINES",
@@ -31,12 +22,7 @@ _SAFE_ENV_KEYS = {
 
 
 def _sanitized_env() -> dict[str, str]:
-    """Return a copy of ``os.environ`` with sensitive variables removed.
-
-    Strips keys whose names start with any prefix in ``_SENSITIVE_ENV_PREFIXES``
-    as well as keys ending with ``_KEY``, ``_TOKEN``, ``_SECRET``,
-    ``_PASSWORD``, or ``_PASSWD`` — unless the key is in ``_SAFE_ENV_KEYS``.
-    """
+    """Return a copy of ``os.environ`` with sensitive variables removed."""
     _bad_suffixes = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD")
     env: dict[str, str] = {}
     for k, v in os.environ.items():
@@ -69,29 +55,7 @@ def run(
     env: dict[str, str] | None = None,
     inherit_env: bool = False,
 ) -> ProcessResult:
-    """Run *cmd* as a subprocess and return a :class:`ProcessResult`.
-
-    Parameters
-    ----------
-    cmd:
-        The command and its arguments as a list.  Never passed through a shell.
-    cwd:
-        Working directory for the child process.  ``None`` inherits the
-        caller's working directory.
-    timeout:
-        Maximum wall-clock seconds to wait.  Defaults to 30.
-    capture:
-        When ``True`` (default) stdout and stderr are captured and returned in
-        the result.  When ``False`` they are inherited from the parent process.
-    env:
-        Optional environment mapping for the child process.  When ``None``
-        (default) the child receives a sanitized copy of the current environment
-        with sensitive variables removed.  Explicit mappings are passed as-is.
-    inherit_env:
-        When ``True`` the child inherits the *full* parent environment
-        (opt-in for callers that genuinely need every variable).  Ignored
-        when *env* is not ``None``.
-    """
+    """Run *cmd* as a subprocess and return a :class:`ProcessResult`."""
     if env is None:
         child_env: dict[str, str] | None = None if inherit_env else _sanitized_env()
     else:
@@ -110,10 +74,8 @@ def run(
         kwargs["errors"] = "replace"
 
     if platform.system() == "Windows":
-        # No special creation flags: avoid WinError 6 / WinError 50 that occur
-        # when CREATE_NO_WINDOW or STARTF_USESHOWWINDOW are combined with PIPE
-        # stdio in headless contexts (pytest capsys, pythonw, Windows services).
-        # The child already has no console because we capture its handles via PIPE.
+        # no special creation flags — avoids WinError 6/50 when CREATE_NO_WINDOW
+        # or STARTF_USESHOWWINDOW are combined with PIPE stdio in headless contexts
         pass
     else:
         kwargs["close_fds"] = True

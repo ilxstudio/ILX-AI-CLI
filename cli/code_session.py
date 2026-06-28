@@ -1,4 +1,4 @@
-"""CodeSession — wraps CodingAgent for the interactive code-agent mode."""
+"""CodeSession — dispatches tasks to CodingAgent in interactive code-agent mode."""
 from __future__ import annotations
 
 import logging
@@ -13,7 +13,6 @@ _log = logging.getLogger("ilx_cli.code")
 
 
 class CodeSession:
-    """Handles one code-agent task dispatch."""
 
     def __init__(self, cfg: AppConfig, ctx: ContextManager) -> None:
         self.cfg = cfg
@@ -42,6 +41,7 @@ class CodeSession:
             print(f"{YELLOW}No workspace set. Use /workspace to set a working folder first.{RESET}")
             return False
 
+        # catch questions typed in code mode and offer to bail out
         if self.ctx.looks_like_question(task):
             print(
                 f"\n{YELLOW}That looks like a question, not a coding task.{RESET}\n"
@@ -135,11 +135,7 @@ class CodeSession:
         return result.success
 
     def run_streaming_mode(self, task: str) -> bool:
-        """Run the code-agent in streaming mode, printing tokens as they arrive.
-
-        Status updates are shown as ANSI in-place progress lines using ``\\r``.
-        Returns True on success.
-        """
+        """Run the code-agent in streaming mode, printing tokens as they arrive."""
         from app.core import git_helper
         from app.core.config import PermissionMode
         from cli.diff_viewer import show_file_change
@@ -176,12 +172,12 @@ class CodeSession:
         _step = [0]
 
         def _on_chunk(text: str) -> None:
-            # Print tokens inline without a newline so they stream visually
+            # print tokens inline so they stream visually
             sys.stdout.write(text)
             sys.stdout.flush()
 
         def _on_tool(name: str, args: dict) -> None:
-            # End any in-progress token stream line, then show tool call
+            # end the in-progress token line before printing the tool call
             sys.stdout.write("\n")
             sys.stdout.flush()
             detail = args.get("path") or args.get("command") or ""
@@ -189,7 +185,7 @@ class CodeSession:
 
         def _on_status(msg: str) -> None:
             _step[0] += 1
-            # Overwrite the current terminal line with the status update
+            # overwrite current terminal line with the new status
             sys.stdout.write(f"\r  {DIM}[step {_step[0]}] {msg}{RESET}    ")
             sys.stdout.flush()
 
@@ -230,7 +226,7 @@ class CodeSession:
             on_tool=_on_tool,
             on_status=_on_status,
         )
-        # Ensure we end on a fresh line after streaming output
+        # make sure we land on a fresh line after all the streaming output
         sys.stdout.write("\n")
         sys.stdout.flush()
         print_hr()
@@ -263,7 +259,7 @@ class CodeSession:
         return result.success
 
     def _run_autofix(self) -> None:
-        """Run the test-fix loop after a successful code task."""
+        # run tests after a code change and ask the LLM to fix failures
         from cli.display import DIM, GREEN, RESET, YELLOW
         from app.core.test_fix_loop import TestFixLoop, detect_test_runner
 

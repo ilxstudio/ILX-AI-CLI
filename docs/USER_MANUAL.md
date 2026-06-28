@@ -1,11 +1,11 @@
 # ILX AI CLI User Manual
 
-Version: 0.3.0 beta
-Updated: 2026-06-28
+Version: 1.0.0
+Released: 2026-06-28
 
-ILX AI CLI is a free, local-first AI developer CLI. It supports chat, code-agent workflows, file and command tools, repo context, project scaffolding, review, test repair, audit logging, model routing, and local/cloud provider switching.
+ILX AI CLI is a free, local-first AI developer CLI. It supports chat, code-agent workflows, file and command tools, repo context, project scaffolding, review, test repair, audit logging, model routing, persistent project memory, an interactive debug runner, and local/cloud provider switching.
 
-This manual describes the current project stage. Some advanced features are beta-quality, especially MCP stdio interoperability and sandboxing beyond workspace/path policy.
+This is the v1.0.0 public release. The tool is production-ready for local-first workflows. Features noted as beta — MCP stdio interoperability and OS-level process sandboxing — are functional but still being hardened against the full range of real-world environments.
 
 ---
 
@@ -19,15 +19,18 @@ This manual describes the current project stage. Some advanced features are beta
 6. Code Agent Mode
 7. Planning, Review, And Test Repair
 8. Context, Indexing, And Research
-9. Permissions, Sandbox, And Command Policies
-10. Audit, Metrics, And Diagnostics
-11. Git, Dev Tools, And Docker
-12. Project Scaffolding
-13. User Tools And MCP
-14. One-Shot And Automation Mode
-15. Settings Reference
-16. Troubleshooting
-17. Full Command Reference
+9. Symbol Search And RAG Tuning
+10. Persistent Project Memory
+11. Interactive Debug Runner
+12. Permissions, Sandbox, And Command Policies
+13. Audit, Metrics, And Diagnostics
+14. Git, Dev Tools, And Docker
+15. Project Scaffolding
+16. User Tools And MCP
+17. One-Shot And Automation Mode
+18. Settings Reference
+19. Troubleshooting
+20. Full Command Reference
 
 ---
 
@@ -51,7 +54,7 @@ python main.py
 
 ### Requirements
 
-- Python 3.11 or newer
+- Python 3.12 or newer
 - Ollama for local models, recommended
 - Windows, macOS, or Linux
 
@@ -363,7 +366,7 @@ Review mode focuses on:
 /fix-tests --only tests/test_auth.py
 ```
 
-The loop runs tests, parses failures, asks the model for targeted fixes, applies changes, and repeats until tests pass or the attempt limit is reached.
+The loop runs tests, parses failures, asks the model for targeted fixes, applies changes, and repeats until tests pass or the attempt limit is reached. Each fix is recorded in project memory (see Section 10) for future reference.
 
 ---
 
@@ -396,7 +399,7 @@ Summarizes old conversation turns to reduce context usage.
 /index clear
 ```
 
-The repo index is used for persistent workspace understanding and retrieval-oriented workflows.
+The repo index powers semantic search, symbol lookup, and retrieval-oriented workflows. Run `/index build` after setting a workspace, and again when files change significantly.
 
 ### Research
 
@@ -420,7 +423,294 @@ ILX falls back to BM25-style retrieval if embeddings are unavailable.
 
 ---
 
-## 9. Permissions, Sandbox, And Command Policies
+## 9. Symbol Search And RAG Tuning
+
+### Symbol Search
+
+After running `/index build`, you can search for symbols — functions, classes, and identifiers — directly by name:
+
+```text
+/symbol validate_token
+/symbol AuthMiddleware
+/symbol process_order
+```
+
+Results show the symbol name, kind (py/ts/js), and file path:
+
+```text
+Symbols matching 'validate':
+
+  py      validate_token              src/auth.py
+  py      validate_card_number        src/payments/validator.py
+  py      validate_order_total        src/orders/checkout.py
+```
+
+Symbol search requires an up-to-date index. If the index is empty, ILX will prompt you to run `/index build` first.
+
+### RAG Tuning
+
+The `/rag` command exposes the retrieval weights used by the hybrid pipeline. You can tune these for your codebase's characteristics:
+
+```text
+/rag status
+```
+
+Shows current weights:
+
+```text
+RAG Thresholds
+  BM25 weight    : 0.60
+  Semantic weight: 0.75
+```
+
+Set a new BM25 weight (favors exact keyword and identifier matches):
+
+```text
+/rag bm25 0.8
+```
+
+Set a new semantic weight (favors conceptual and paraphrase matches):
+
+```text
+/rag semantic 0.5
+```
+
+Values must be between 0.0 and 1.0. Settings are persisted across sessions. For codebases with many exact identifier references (e.g. Python with consistent naming), a higher BM25 weight tends to improve precision. For codebases where questions are phrased conceptually, a higher semantic weight is preferable.
+
+---
+
+## 10. Persistent Project Memory
+
+Project memory stores facts, fix decisions, and symbol records across all sessions. Unlike conversation history, which is per-session and subject to context limits, project memory is persistent, searchable, and available to every future session in the same workspace.
+
+Memory is stored in `.ilx_cli/memory.db` under the workspace root. You can commit this file to version control to share project knowledge with your team, or add it to `.gitignore` for personal-only use.
+
+### Storing And Retrieving Facts
+
+Add a fact:
+
+```text
+/memory add <key> <value>
+```
+
+Example:
+
+```text
+/memory add auth-token-ttl "access tokens expire in 15 minutes; refresh tokens expire in 7 days"
+/memory add db-engine "PostgreSQL 16, connection pool size 20, pgBouncer in transaction mode"
+/memory add test-command "pytest --tb=short -q; coverage threshold 80%"
+```
+
+Show all stored facts:
+
+```text
+/memory show
+```
+
+Show facts matching a filter:
+
+```text
+/memory show auth
+```
+
+### Forgetting Facts
+
+Delete all facts with a specific key:
+
+```text
+/memory forget auth-token-ttl
+```
+
+Confirmation is shown with the count of records deleted.
+
+### Fix History
+
+The `/fix-tests` loop and the code agent write fix records automatically. To view them:
+
+```text
+/memory fixes
+```
+
+To view fixes for a specific file:
+
+```text
+/memory fixes src/auth.py
+```
+
+Output shows the date, file, outcome (success or failure), the problem description, and the solution applied. This history helps avoid repeating past mistakes and provides context when revisiting difficult areas of the codebase.
+
+### Searching Memory
+
+Search across both facts and the symbol index:
+
+```text
+/memory search <query>
+```
+
+Example:
+
+```text
+/memory search token
+```
+
+Output:
+
+```text
+Facts matching 'token':
+  auth-token-ttl  access tokens expire in 15 minutes; refresh tokens expire in 7 days
+
+Symbols matching 'token':
+  function   validate_token      src/auth.py
+  function   refresh_token       src/auth.py
+  class      TokenBlacklist      src/auth.py
+```
+
+### Memory Statistics
+
+```text
+/memory stats
+```
+
+Output:
+
+```text
+Project Memory Stats
+  Facts     12
+  Fixes     34
+  Symbols   1,847
+  DB size   248 KB
+  /home/user/projects/my-api/.ilx_cli/memory.db
+```
+
+### Summary Of Memory Subcommands
+
+| Subcommand | Description |
+|---|---|
+| `/memory show [query]` | List stored facts, optionally filtered |
+| `/memory add <key> <value>` | Store a fact |
+| `/memory forget <key>` | Delete facts with this key |
+| `/memory fixes [file]` | Show past fix decisions |
+| `/memory search <query>` | Search facts and symbols |
+| `/memory stats` | Show database statistics |
+
+---
+
+## 11. Interactive Debug Runner
+
+The debug runner lets you run Python scripts interactively inside ILX with full stdin passthrough. All output is captured and logged. When errors occur, one command sends the error context to the active model for analysis.
+
+### Running A Script
+
+```text
+/debug <script.py> [args...]
+```
+
+Example:
+
+```text
+/debug src/process_orders.py --env staging
+```
+
+ILX shows:
+
+```text
+Debug: src/process_orders.py --env staging
+  Session : debug_20260628_143201
+  Python  : .venv/bin/python
+  Log     : ~/.ilx_cli/debug/debug_20260628_143201.log
+  Type input when prompted. Ctrl+C to stop.
+```
+
+- Standard input from your terminal is passed directly to the running script.
+- Standard output is shown in white.
+- Standard error is shown in red.
+- System messages (start, exit code, elapsed time) are shown in dim text.
+
+If the workspace contains a `.venv` or `venv` directory, that environment's Python is used automatically.
+
+When the script exits:
+
+```text
+  Exited 1  2.3s
+  Log saved: ~/.ilx_cli/debug/debug_20260628_143201.log
+  1 error line(s) detected.
+  Run /debug analyze to get AI suggestions for these errors.
+```
+
+### Viewing The Log
+
+Show the output from the last debug session:
+
+```text
+/debug log
+```
+
+This displays the last 80 lines of the session log, color-coded by stream type (stdout, stderr, stdin, system).
+
+### Listing Recent Sessions
+
+```text
+/debug logs
+```
+
+Output:
+
+```text
+Recent debug sessions:
+
+  debug_20260628_143201  12 KB  — /debug analyze debug_20260628_143201
+  debug_20260628_110045  4 KB   — /debug analyze debug_20260628_110045
+  debug_20260627_172233  8 KB   — /debug analyze debug_20260627_172233
+```
+
+### AI Error Analysis
+
+Analyze errors from the last session:
+
+```text
+/debug analyze
+```
+
+Analyze errors from a specific session:
+
+```text
+/debug analyze debug_20260628_143201
+```
+
+ILX extracts relevant error lines (tracebacks, exception messages, file references), constructs a structured prompt with the command, exit code, user input, and error context, and submits it to the active model. The response includes a specific diagnosis and fix: corrected code, a `pip install` command, or a configuration change — with file and line number references where visible.
+
+Example output:
+
+```text
+Analyzing session: debug_20260628_143201
+
+AI Analysis:
+  The error occurs at process_orders.py line 87. The orders list contains
+  records where the "amount" field is None. The fix is to filter or coerce:
+
+      total = sum(o["amount"] or 0 for o in orders)
+
+  If None is unexpected, add a validation step when loading orders to surface
+  the root cause earlier.
+
+  Run /debug debug_20260628_143201 again after applying the fix.
+```
+
+If the model cannot be reached (e.g. Ollama is not running), ILX shows the error and suggests checking `/status` or switching providers with `/provider`.
+
+### Summary Of Debug Subcommands
+
+| Subcommand | Description |
+|---|---|
+| `/debug <script.py> [args]` | Run interactively with stdin passthrough |
+| `/debug log` | Show output from the last session |
+| `/debug logs` | List recent debug sessions |
+| `/debug analyze` | AI analysis of errors from the last session |
+| `/debug analyze <id>` | AI analysis of a specific session by ID |
+
+---
+
+## 12. Permissions, Sandbox, And Command Policies
 
 ### Permission Profiles
 
@@ -479,7 +769,7 @@ Allow/deny lists reduce prompt fatigue while keeping dangerous commands blocked.
 
 ---
 
-## 10. Audit, Metrics, And Diagnostics
+## 13. Audit, Metrics, And Diagnostics
 
 ### Workspace Audit
 
@@ -532,7 +822,7 @@ The audit log records actions under `~/.ilx_cli`. Secret-shaped fields are redac
 
 ---
 
-## 11. Git, Dev Tools, And Docker
+## 14. Git, Dev Tools, And Docker
 
 ### Git
 
@@ -587,7 +877,7 @@ Docker scaffolding favors multi-stage builds and non-root runtime users where te
 
 ---
 
-## 12. Project Scaffolding
+## 15. Project Scaffolding
 
 ```text
 /init python
@@ -621,7 +911,7 @@ Use dry-run preview where supported:
 
 ---
 
-## 13. User Tools And MCP
+## 16. User Tools And MCP
 
 ### User Tools
 
@@ -682,7 +972,7 @@ MCP stdio support is beta. Test each real MCP server before relying on it for pr
 
 ---
 
-## 14. One-Shot And Automation Mode
+## 17. One-Shot And Automation Mode
 
 ```bash
 ilx --chat "explain this error"
@@ -718,7 +1008,7 @@ Automation recommendation:
 
 ---
 
-## 15. Settings Reference
+## 18. Settings Reference
 
 ```text
 /settings
@@ -766,7 +1056,7 @@ Commands:
 
 ---
 
-## 16. Troubleshooting
+## 19. Troubleshooting
 
 ### Ollama Is Not Running
 
@@ -838,13 +1128,33 @@ In ILX:
 
 Make sure the terminal is using UTF-8 if you want full box/Unicode rendering.
 
+### Index Is Empty After /index build
+
+Verify the workspace is set correctly:
+
+```text
+/status
+/workspace D:\Projects\my-app
+/index build
+```
+
+If the workspace contains only files with unsupported extensions, the index will report zero files. Supported extensions include `.py`, `.js`, `.ts`, `.md`, `.json`, `.yaml`, `.toml`, and most common source file types.
+
+### /symbol Returns No Results
+
+The symbol index is populated during `/index build`. If you have added new files since the last build, run `/index build` again. Symbol search is case-insensitive substring matching — if you are not finding a symbol, try a shorter or partial name.
+
+### /debug analyze Shows No Errors
+
+If the program exited cleanly (exit code 0) and produced no traceback or error-pattern output, `/debug analyze` will report that the session appears clean. If errors were written to a file rather than stderr, the log may not capture them. Check `/debug log` for the raw session output.
+
 ### Tests Fail Due To Live Model Quality
 
 Some tests use a configured local/live model. For release gating, separate deterministic tests from provider-live/model-quality tests.
 
 ---
 
-## 17. Full Command Reference
+## 20. Full Command Reference
 
 ### Conversation
 
@@ -876,9 +1186,40 @@ Some tests use a configured local/live model. For release gating, separate deter
 /fetch <url>
 /research <query>
 /index build
+/index build <path>
 /index status
 /index explain <query>
 /index clear
+```
+
+### Symbol And RAG
+
+```text
+/symbol <name>
+/rag status
+/rag bm25 <0.0-1.0>
+/rag semantic <0.0-1.0>
+```
+
+### Project Memory
+
+```text
+/memory show [query]
+/memory add <key> <value>
+/memory forget <key>
+/memory fixes [file]
+/memory search <query>
+/memory stats
+```
+
+### Debug Runner
+
+```text
+/debug <script.py> [args...]
+/debug log
+/debug logs
+/debug analyze
+/debug analyze <session_id>
 ```
 
 ### Provider And Model
@@ -1081,22 +1422,24 @@ Some tests use a configured local/live model. For release gating, separate deter
 
 ---
 
-## Beta Notes
+## Production Use Notes
 
-ILX is currently suitable for controlled beta use and local-first workflows. Before using it on sensitive or production codebases:
+ILX AI CLI v1.0.0 is suitable for production use in local-first workflows. Before using it on sensitive or production codebases:
 
 - keep `/permission coding` or `/permission safe`,
 - keep `/sandbox workspace`,
 - use Git branches,
-- review diffs,
+- review diffs before committing,
 - keep `/tools off` unless tool execution is needed,
 - prefer local models for private code,
-- run `/audit replay` after agent sessions.
+- run `/audit replay` after agent sessions,
+- use `/memory` to preserve institutional knowledge across sessions.
 
-Known beta limitations:
+Known limitations in this release:
 
-- OS-level command sandboxing is not complete across all platforms.
+- OS-level command sandboxing is not complete across all platforms. The sandbox enforces workspace path policy but does not use OS-level process isolation (namespaces, seccomp, AppContainer).
 - MCP stdio support is still being hardened against real-world servers.
-- Live model quality varies by configured model.
-- Some output modes are still being applied command by command.
+- The debug runner currently supports Python scripts only; Node.js and other runtimes are planned.
+- Some output formatting modes are still being applied command by command rather than globally.
 
+MIT License. Copyright 2026 ILX Studio, LLC.

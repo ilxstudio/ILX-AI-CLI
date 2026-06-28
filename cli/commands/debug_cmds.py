@@ -1,15 +1,4 @@
-"""Debug command — /debug runs a program interactively with stdin passthrough,
-venv auto-detection, and AI-assisted error analysis.
-
-Subcommands:
-  /debug <script.py> [args...]  — run interactively (stdin passes through)
-  /debug log                    — show last session log
-  /debug logs                   — list recent debug sessions
-  /debug analyze                — AI analysis of last session errors
-  /debug analyze <session_id>   — AI analysis of a specific session
-
-Copyright 2026 ILX Studio — MIT License
-"""
+"""Debug commands — /debug runs a program interactively and can call the LLM to explain errors."""
 from __future__ import annotations
 
 import logging
@@ -32,7 +21,8 @@ _USAGE = (
     f"  {CYAN}/debug analyze <id>{RESET}          — AI analysis of a specific session"
 )
 
-_LAST_SESSION_ID: list[str] = []   # module-level mutable to track last run
+# module-level list so we can track the most recent session across calls
+_LAST_SESSION_ID: list[str] = []
 
 
 class DebugCommands:
@@ -53,8 +43,6 @@ class DebugCommands:
             self._analyze(sid)
         else:
             self._run(args)
-
-    # ── run ───────────────────────────────────────────────────────────────────
 
     def _run(self, args: list[str]) -> None:
         from cli.debug_runner import find_python, run_interactive
@@ -99,7 +87,6 @@ class DebugCommands:
             on_output=_on_output,
         )
 
-        # Summary
         print()
         if report.exit_code == 0:
             out(f"  {GREEN}Exited cleanly (0)  {report.elapsed_s:.1f}s{RESET}")
@@ -114,8 +101,6 @@ class DebugCommands:
                 out(f"    {RED}{ln[:120]}{RESET}")
             out(f"\n  {DIM}Run {CYAN}/debug analyze{DIM} to get AI suggestions for these errors.{RESET}")
         print()
-
-    # ── log display ───────────────────────────────────────────────────────────
 
     def _show_log(self, session_id: str | None) -> None:
         from cli.debug_runner import _LOG_DIR, list_sessions
@@ -135,7 +120,7 @@ class DebugCommands:
 
         out(f"\n{BOLD}Debug log:{RESET}  {DIM}{log_p}{RESET}\n")
         text = log_p.read_text(encoding="utf-8", errors="replace")
-        for line in text.splitlines()[-80:]:   # last 80 lines
+        for line in text.splitlines()[-80:]:  # only show the tail so it's readable
             if "[stderr]" in line:
                 out(f"  {RED}{line}{RESET}")
             elif "[stdin]" in line:
@@ -160,8 +145,6 @@ class DebugCommands:
             out(f"  {CYAN}{sid}{RESET}  {DIM}{size_kb} KB{RESET}  — /debug analyze {sid}")
         print()
 
-    # ── AI analysis ───────────────────────────────────────────────────────────
-
     def _analyze(self, session_id: str | None) -> None:
         from cli.debug_runner import _LOG_DIR, list_sessions, load_session_report
 
@@ -174,6 +157,7 @@ class DebugCommands:
 
         report = load_session_report(session_id)
         if report is None:
+            # fall back to raw log text if the JSON doesn't exist
             log_p = _LOG_DIR / f"{session_id}.log"
             if not log_p.exists():
                 out(f"  {YELLOW}Session '{session_id}' not found.{RESET}")
@@ -183,7 +167,7 @@ class DebugCommands:
 
         out(f"\n{BOLD}Analyzing session:{RESET}  {CYAN}{session_id}{RESET}\n")
 
-        # Build the error context for the LLM
+        # pull out just the error-looking lines to keep the prompt focused
         lines  = report.get("lines", [])
         cmd    = " ".join(report.get("command", []))
         code   = report.get("exit_code", "?")
@@ -201,6 +185,7 @@ class DebugCommands:
             out(f"  {GREEN}No errors in session log — program appeared to run cleanly.{RESET}\n")
             return
 
+        # build a prompt that gives the LLM everything it needs to diagnose the issue
         prompt = (
             f"A Python program was run interactively and produced errors.\n\n"
             f"Command: {cmd}\n"
@@ -216,7 +201,6 @@ class DebugCommands:
             "Be specific — name the file and line number if visible."
         )
 
-        # Call the LLM
         try:
             from codex.app.llm_client import OllamaClient
             llm = OllamaClient(

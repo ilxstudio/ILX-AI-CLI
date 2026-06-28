@@ -1,4 +1,4 @@
-"""Index commands -- /index: build and query persistent repo index."""
+"""Index commands — /index: build and query the persistent repo index."""
 from __future__ import annotations
 
 import logging
@@ -16,11 +16,10 @@ _log = logging.getLogger("ilx_cli.index_cmds")
 
 
 class IndexCommands:
-    """/index command handler."""
 
     def __init__(self, cfg: AppConfig) -> None:
         self._cfg = cfg
-        self._retriever = None   # lazy init
+        self._retriever = None  # lazy init — only create when actually needed
 
     def cmd_index(self, args: list[str]) -> None:
         """/index [build|status|explain|clear|help]"""
@@ -37,10 +36,7 @@ class IndexCommands:
         fn = dispatch.get(sub, self._index_help)
         fn(rest)
 
-    # ── subcommands ───────────────────────────────────────────────────────
-
     def _index_build(self, args: list[str]) -> None:
-        """Index the current workspace for semantic + BM25 retrieval."""
         wf = args[0] if args else self._cfg.working_folder
         if not wf or not Path(wf).is_dir():
             out_error(f"  {RED}Invalid workspace: {wf!r}{RESET}")
@@ -49,7 +45,7 @@ class IndexCommands:
 
         out(f"\n{BOLD}Building index for:{RESET} {DIM}{wf}{RESET}")
 
-        # Pre-count source files so the progress bar can show a percentage.
+        # count source files up front so the progress bar can show a real percentage
         _source_exts = {".py", ".js", ".ts", ".md", ".txt", ".json", ".yaml", ".yml",
                         ".toml", ".cfg", ".ini", ".html", ".css", ".rs", ".go", ".java", ".c", ".cpp"}
         _total = sum(
@@ -77,7 +73,6 @@ class IndexCommands:
         out(f"  {GREEN}[ok]{RESET} Indexed {count} file(s).\n")
 
     def _index_status(self, _args: list[str]) -> None:
-        """Show index health: file count, chunk count, DB size."""
         retriever = self._get_retriever()
         stats = retriever.stats()
 
@@ -93,13 +88,7 @@ class IndexCommands:
         out("")
 
     def _index_explain(self, args: list[str]) -> None:
-        """Show retrieved chunks for a query — file names, scores, and content preview.
-
-        When local indexed chunks are available, retrieves them directly via
-        HybridRetriever for transparency (score + file + preview).  Falls back
-        to ResearchRunner (LLM-synthesised answer) when the in-memory index is
-        empty so that /index explain is still useful before /index build is run.
-        """
+        """Show scored chunks for a query, or fall back to LLM synthesis if the index is empty."""
         if not args:
             out(f"  {YELLOW}Usage: /index explain <query>{RESET}\n")
             return
@@ -107,7 +96,7 @@ class IndexCommands:
         retriever = self._get_retriever()
         out(f"\n{BOLD}Index query:{RESET} {query}\n")
 
-        # Try direct chunk retrieval first (index must be non-empty)
+        # try direct chunk retrieval first — more transparent, shows scores
         sem = retriever._get_semantic()
         if sem is not None and getattr(sem, "_files", {}):
             from app.core.rag import chunk_text, rank_chunks_scored
@@ -135,7 +124,7 @@ class IndexCommands:
                 out("")
                 return
 
-        # Fallback: LLM-synthesised answer via ResearchRunner
+        # index is empty — fall back to LLM-synthesised answer
         from app.core.research_runner import ResearchRunner
         runner = ResearchRunner(self._cfg)
         result = runner.query(query, working_folder=self._cfg.working_folder)
@@ -148,7 +137,6 @@ class IndexCommands:
         out("")
 
     def _index_clear(self, _args: list[str]) -> None:
-        """Clear the in-memory index."""
         retriever = self._get_retriever()
         retriever.clear()
         out(f"  {GREEN}[ok]{RESET} Index cleared.\n")
@@ -161,8 +149,6 @@ class IndexCommands:
         out(f"  {CYAN}/index explain <question>{RESET}  Search the index with a question")
         out(f"  {CYAN}/index clear{RESET}               Clear the in-memory index\n")
 
-    # ── helpers ───────────────────────────────────────────────────────────
-
     def _get_retriever(self):
         if self._retriever is None:
             from app.core.hybrid_retriever import HybridRetriever
@@ -171,12 +157,7 @@ class IndexCommands:
 
 
 def cmd_rag(args: list[str], cfg) -> None:
-    """/rag — tune RAG similarity thresholds.
-
-    /rag bm25 <0.0-1.0>      Set BM25 score threshold
-    /rag semantic <0.0-1.0>  Set semantic similarity threshold
-    /rag status               Show current weights
-    """
+    """/rag — tune RAG similarity thresholds."""
     from app.core.config import ConfigManager
 
     sub = args[0].lower() if args else "status"
@@ -218,7 +199,6 @@ def cmd_symbol(query: str, cfg) -> None:
     wf = cfg.working_folder
     index_path = Path(wf) / ".project_index" if wf else None
     if not wf or (index_path is not None and not index_path.exists()):
-        # Index may live in-memory; still attempt, but warn if workspace is unset
         if not wf:
             out(f"  {YELLOW}[!]{RESET} No workspace set. Run {CYAN}/workspace <path>{RESET} then {CYAN}/index build{RESET}.\n")
             return
@@ -231,7 +211,7 @@ def cmd_symbol(query: str, cfg) -> None:
     from app.core.hybrid_retriever import HybridRetriever
     retriever = HybridRetriever(cfg)
 
-    # Access the symbol index directly (dict[symbol_name -> file_path])
+    # go straight to the internal symbol dict — faster than a full text search
     symbol_index: dict[str, str] = retriever._symbol_index  # type: ignore[attr-defined]
 
     if not symbol_index:
@@ -251,7 +231,7 @@ def cmd_symbol(query: str, cfg) -> None:
 
     out(f"\n{BOLD}Symbols matching {query!r}:{RESET}")
     for name, path in sorted(matches, key=lambda x: x[0].lower()):
-        # Determine kind from file suffix
+        # infer language kind from file extension for quick visual scanning
         suffix = Path(path).suffix.lower()
         if suffix == ".py":
             kind = "py"

@@ -359,7 +359,7 @@ class PlanSession:
                 "completed_steps": [],
                 "risks": plan.risks,
                 "tests": plan.tests,
-                "created_at": datetime.datetime.utcnow().isoformat(),
+                "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "status": "in_progress",
             }, indent=2), encoding="utf-8")
             plan.saved_at = str(p)

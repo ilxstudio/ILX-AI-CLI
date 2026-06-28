@@ -24,9 +24,9 @@ MIT License — Free to use, modify, and distribute.
 
 ## 1. Executive Summary
 
-The AI-assisted development landscape has matured rapidly, but a significant gap remains: most tools force developers to choose between capability and control. Cloud-hosted tools deliver powerful models but require sending source code to third-party servers. Local tools preserve privacy but offer a narrow feature set tied to a single provider. Neither option serves the growing class of professional developers who need the full spectrum — chat, code generation, code review, test repair, research, workspace indexing, and process supervision — without sacrificing data sovereignty or being locked into a single vendor or pricing model.
+The AI-assisted development landscape has matured rapidly, but a significant gap remains: most tools force developers to choose between capability and control. Cloud-hosted tools deliver powerful models but require sending source code to third-party servers. Local tools preserve privacy but offer a narrow feature set tied to a single provider. Neither option serves the growing class of professional developers who need the full spectrum — chat, code generation, code review, test repair, research, workspace indexing, persistent project memory, and process supervision — without sacrificing data sovereignty or being locked into a single vendor or pricing model.
 
-ILX AI CLI is a terminal-first, open-source AI coding assistant built to close that gap. It operates local-first by default through deep Ollama integration, while simultaneously supporting Anthropic, OpenAI, Groq, and Gemini as switchable providers through a single unified interface. Every capability — from BM25+semantic hybrid retrieval-augmented generation (RAG) to sandboxed command execution with audit logging — runs identically regardless of which model or provider is active. The tool is written in Python 3.12, runs on Windows, macOS, and Linux, and is released under the MIT License with no usage tiers, no seats, and no telemetry.
+ILX AI CLI is a terminal-first, open-source AI coding assistant built to close that gap. It operates local-first by default through deep Ollama integration, while simultaneously supporting Anthropic, OpenAI, Groq, and Gemini as switchable providers through a single unified interface. Every capability — from BM25+semantic hybrid retrieval-augmented generation (RAG) to sandboxed command execution with audit logging, to persistent project memory and interactive debug sessions with AI error analysis — runs identically regardless of which model or provider is active. The tool is written in Python 3.12, runs on Windows, macOS, and Linux, and is released under the MIT License with no usage tiers, no seats, and no telemetry.
 
 ILX Studio, LLC built ILX AI CLI because the team needed it. Working on projects with strict data-handling requirements, the team evaluated the leading tools and found each one wanting in at least one critical dimension. This white paper describes the problem in detail, places ILX AI CLI in the competitive landscape, explains the architectural decisions that make it viable for regulated and security-conscious environments, and outlines the roadmap for the community-driven development model going forward.
 
@@ -54,7 +54,7 @@ Provider lock-in is a related concern. A team that builds workflows around a sin
 
 ### 2.4 The Feature Fragmentation Problem
 
-Even among tools that address some of these concerns, no single solution covers the complete developer workflow. Code completion is one activity. Code review, iterative test repair, structured research across documentation and code, workspace-wide semantic indexing, and multi-step agent workflows are distinct activities that current tools handle inconsistently or not at all. Developers end up stitching together multiple tools, each with its own context model and output format, to approximate the coverage they need.
+Even among tools that address some of these concerns, no single solution covers the complete developer workflow. Code completion is one activity. Code review, iterative test repair, structured research across documentation and code, workspace-wide semantic indexing, persistent project context across sessions, and multi-step agent workflows are distinct activities that current tools handle inconsistently or not at all. Developers end up stitching together multiple tools, each with its own context model and output format, to approximate the coverage they need.
 
 ---
 
@@ -73,7 +73,7 @@ The table below summarizes how the leading tools compare across dimensions that 
 
 ### 3.1 GitHub Copilot
 
-GitHub Copilot is the market leader in AI-assisted code completion. Its tight integration with GitHub and VS Code gives it distribution advantages that no independent tool can replicate. However, it is fundamentally a completion engine, not a general coding assistant. There is no structured code review command, no test-fixing loop, no research capability, and no offline mode. All inference is cloud-bound, and the product is closed-source. For the use cases described in Section 2, Copilot is not a viable option.
+GitHub Copilot is the market leader in AI-assisted code completion. Its tight integration with GitHub and VS Code gives it distribution advantages that no independent tool can replicate. However, it is fundamentally a completion engine, not a general coding assistant. There is no structured code review command, no test-fixing loop, no research capability, no persistent project memory, and no offline mode. All inference is cloud-bound, and the product is closed-source. For the use cases described in Section 2, Copilot is not a viable option.
 
 ### 3.2 Cursor
 
@@ -81,11 +81,11 @@ Cursor delivers a polished experience for developers willing to adopt it as thei
 
 ### 3.3 Continue.dev
 
-Continue.dev is the most direct open-source competitor in the IDE-integrated space. It supports Ollama and multiple providers, which makes it meaningfully more flexible than Copilot or Cursor. However, it remains an IDE extension: its primary interface is a sidebar in VS Code or JetBrains. Terminal-first workflows are not served. The command set is limited to completions and basic chat; there is no structured review, research, or test-repair workflow.
+Continue.dev is the most direct open-source competitor in the IDE-integrated space. It supports Ollama and multiple providers, which makes it meaningfully more flexible than Copilot or Cursor. However, it remains an IDE extension: its primary interface is a sidebar in VS Code or JetBrains. Terminal-first workflows are not served. The command set is limited to completions and basic chat; there is no structured review, research, project memory, or test-repair workflow.
 
 ### 3.4 Aider
 
-Aider is the strongest open-source terminal-based option currently available. It has a dedicated user base, active development, and a coherent philosophy around pair-programming in the terminal. Its limitations are real: the provider set is narrower, the permission and security model is minimal, and the command set, while growing, does not cover the full workflow described in this paper. Aider is a strong single-task tool; ILX AI CLI is designed as a complete developer workflow platform.
+Aider is the strongest open-source terminal-based option currently available. It has a dedicated user base, active development, and a coherent philosophy around pair-programming in the terminal. Its limitations are real: the provider set is narrower, the permission and security model is minimal, there is no persistent project memory, no interactive debug runner, and the command set, while growing, does not cover the full workflow described in this paper. Aider is a strong single-task tool; ILX AI CLI is designed as a complete developer workflow platform.
 
 ### 3.5 OpenHands
 
@@ -120,6 +120,10 @@ ILX AI CLI exposes a structured command interface covering the full development 
 | `/research` | Combined web and codebase research with cited synthesis |
 | `/plan` | Structured implementation planning from a natural-language objective |
 | `/index` | Workspace indexing for semantic search across the full codebase |
+| `/symbol` | Symbol-level search across the indexed codebase |
+| `/rag` | Tune the RAG retrieval pipeline weights |
+| `/memory` | Persistent project knowledge: facts, fix history, and symbol records |
+| `/debug` | Interactive debug runner with AI-assisted error analysis |
 | `/audit` | Replay and inspect logged actions from a session |
 | `/benchmark` | Model performance comparison across defined tasks |
 | `/route` | Intelligent routing to the best available model for a task |
@@ -129,6 +133,34 @@ These commands are not thin wrappers around a chat interface. Each is implemente
 ### 4.3 Retrieval-Augmented Generation
 
 The workspace indexing system combines BM25 keyword retrieval with dense semantic embeddings to produce a hybrid RAG pipeline. When a developer asks a question about their codebase, the system retrieves the most relevant files and code sections using both lexical matching (which handles exact identifiers, function names, and error messages well) and semantic similarity (which handles conceptual queries and paraphrased descriptions). The combined ranking feeds context into the active model's prompt window, giving the LLM accurate grounding in the actual code rather than relying on training data that may be stale or simply wrong about the project.
+
+The `/rag` command exposes the retrieval weights directly, allowing developers and teams to tune BM25 and semantic thresholds for their specific codebase characteristics. The `/symbol` command provides direct symbol-level lookup without requiring a full semantic query.
+
+### 4.4 Persistent Project Memory
+
+Standard AI coding tools start each session with no knowledge of the project. Conventions, architectural decisions, past bug fixes, and team preferences must be re-established through context injection every time. This is wasteful and error-prone.
+
+ILX AI CLI addresses this with a persistent project memory system backed by a local SQLite database stored in the project workspace. The memory system stores three categories of information:
+
+**Facts** are developer-supplied key-value pairs that remain available across all sessions. A team can record that `auth-token-ttl = access tokens expire in 15 minutes`, that `db-engine = PostgreSQL 16 with pool size 20`, or that a specific pattern is prohibited in the codebase. These facts are retrieved automatically when relevant and can be searched explicitly with `/memory search`.
+
+**Fix records** are written automatically whenever the `/fix-tests` loop repairs a failing test or the code agent resolves an error. Each record captures the file path, a description of the problem, the solution applied, and the outcome. Developers and the AI can consult this history to avoid repeating past mistakes and to understand why a particular approach was chosen.
+
+**Symbol records** are written during workspace indexing. The `/symbol` command searches the symbol index for matching function names, class names, and identifiers, with file path and signature. This gives the AI accurate grounding in the actual structure of the codebase rather than guessing from context alone.
+
+The memory database never leaves the developer's machine. It is stored under the workspace root in `.ilx_cli/memory.db` and can be committed to version control to share project knowledge across a team, or excluded via `.gitignore` for personal-only use. The `/memory stats` command shows database size and record counts.
+
+### 4.5 Interactive Debug Runner with AI Error Analysis
+
+Debugging interactive programs — scripts that read from stdin, prompt the user, or run multi-stage pipelines — is poorly served by existing AI coding tools. Most tools operate at the level of static code analysis or completed outputs; they cannot observe a program running interactively in real time.
+
+The ILX AI CLI debug runner addresses this directly. The `/debug` command launches a Python script in a subprocess with full stdin passthrough, meaning the developer's terminal input reaches the program as if ILX were not present. All output — stdout, stderr, and user input — is captured to a structured session log under `~/.ilx_cli/debug/`. The session ID is displayed at launch and associated with all subsequent analysis commands.
+
+When the program exits with a non-zero code or produces error output, the developer runs `/debug analyze`. ILX extracts the relevant error lines — tracebacks, exception messages, file references — and constructs a structured prompt that includes the command, exit code, user input, and error context. This prompt is submitted to the active LLM, which returns a specific diagnosis and fix: the corrected line of code, the `pip install` command for a missing dependency, or the configuration change required. The session log is preserved so the developer can re-run analysis against the same session or compare multiple sessions with `/debug logs`.
+
+Venv detection is automatic: if the workspace contains a `.venv` or `venv` directory, the debug runner uses that environment's Python binary rather than the system Python, matching the environment the code was written for.
+
+This capability eliminates the copy-paste cycle of running a program, capturing its error output, switching to an AI chat window, pasting the error, and reading a response. The debug runner keeps the developer in a single tool and a single context throughout the diagnostic cycle.
 
 ---
 
@@ -192,6 +224,10 @@ Streaming model output is managed through `deque`-based bounded buffers that pre
 
 The CLI is designed for fast startup. Imports are deferred where possible, the configuration is loaded lazily, and the provider client is not initialized until the first request is made. Cold start to interactive prompt takes under one second on representative developer hardware.
 
+### 6.6 Project Memory Performance
+
+The persistent project memory system uses SQLite with indexed columns on key and kind fields. Lookups for facts and symbols are sub-millisecond on typical project memory databases. The full-text search across facts uses SQLite's FTS5 extension where available, with fallback to LIKE-based search on older SQLite builds. Database size for a large active project with thousands of facts and symbols remains under 10 MB on disk.
+
 ---
 
 ## 7. Developer Experience Design
@@ -202,7 +238,7 @@ ILX AI CLI is designed for the terminal, not adapted to it. The interface uses s
 
 ### 7.2 Session Continuity
 
-Context is maintained across the full session. The tool tracks the conversation history, the active files, and the state of any ongoing workflow (test-fix loop, review, research) and makes all of it available to subsequent commands without requiring the developer to re-establish context. Sessions can be named and resumed across terminal sessions.
+Context is maintained across the full session. The tool tracks the conversation history, the active files, and the state of any ongoing workflow (test-fix loop, review, research) and makes all of it available to subsequent commands without requiring the developer to re-establish context. Sessions can be named and resumed across terminal sessions. Persistent project memory extends this continuity across all sessions indefinitely.
 
 ### 7.3 Zero-Configuration Start
 
@@ -210,7 +246,7 @@ A developer with Ollama installed can run ILX AI CLI without any additional conf
 
 ### 7.4 Composability
 
-Commands can be composed. The output of `/research` can feed into `/plan`; the output of `/plan` can feed into `/review`; the results of `/fix-tests` feed back into the same session context. This composability enables multi-step workflows that would otherwise require manual copy-paste between tool invocations.
+Commands can be composed. The output of `/research` can feed into `/plan`; the output of `/plan` can feed into `/review`; the results of `/fix-tests` feed back into the same session context, and fix records are written to project memory automatically. The debug runner's session logs feed directly into `/debug analyze`. This composability enables multi-step workflows that would otherwise require manual copy-paste between tool invocations.
 
 ### 7.5 MCP Tool Integration
 
@@ -225,7 +261,7 @@ The Model Context Protocol (MCP) integration allows external tools and data sour
 The codebase is organized into three distinct layers with explicit dependency boundaries:
 
 - **`cli/`** — Command parsing, argument validation, output formatting, and user interaction. This layer has no direct dependency on model providers; it communicates with the application layer through defined interfaces.
-- **`app/core/`** — Session management, permission engine, audit logging, provider routing, and RAG orchestration. This is the central application layer; it depends on providers and the indexing system but not on the CLI layer.
+- **`app/core/`** — Session management, permission engine, audit logging, provider routing, RAG orchestration, project memory, and debug session management. This is the central application layer; it depends on providers and the indexing system but not on the CLI layer.
 - **`codex/app/`** — Workspace indexing, embedding computation, and retrieval. This layer is independently testable and can be used programmatically without the CLI.
 
 This separation ensures that adding a new provider requires changes only in `app/core/`, adding a new command requires changes only in `cli/`, and indexing improvements can be developed and tested in isolation.
@@ -236,11 +272,19 @@ Each LLM provider is implemented behind a common interface that exposes: streami
 
 ### 8.3 Python 3.12
 
-The tool targets Python 3.12 specifically to take advantage of improved performance characteristics in the interpreter, better error messages during development, and the stable asyncio improvements that make streaming model output efficient. The dependency footprint is intentionally minimal: core functionality has no external dependencies beyond the provider SDKs. The RAG pipeline adds numpy and a sentence-transformers-compatible embedding library.
+The tool targets Python 3.12 specifically to take advantage of improved performance characteristics in the interpreter, better error messages during development, and the stable asyncio improvements that make streaming model output efficient. The dependency footprint is intentionally minimal: core functionality has no external dependencies beyond the provider SDKs. The RAG pipeline adds numpy and a sentence-transformers-compatible embedding library. Project memory uses SQLite from the Python standard library.
 
 ### 8.4 Configuration System
 
 Configuration is hierarchical: system defaults are overridden by user-level configuration, which is overridden by project-level configuration. Project-level configuration lives in a `.ilx/` directory in the project root and can be committed to version control to share settings across a team. Secrets are never part of any configuration file at any level.
+
+### 8.5 Project Memory Storage
+
+Project memory is stored in a SQLite database at `<workspace>/.ilx_cli/memory.db`. The schema contains three tables: `facts` (key-value records with timestamps and session IDs), `fixes` (file path, problem description, solution, and outcome), and `symbols` (name, kind, file path, and signature). Writes are synchronous and immediate; there is no background flush that could lose data on crash. The database file is created on first write and requires no initialization step.
+
+### 8.6 Debug Session Storage
+
+Debug session logs are stored as structured text files under `~/.ilx_cli/debug/`. Each session file records timestamped entries for stdout, stderr, and stdin, tagged by stream type. Session IDs are derived from the launch timestamp and are stable across analyze commands. The runner uses Python's `subprocess.Popen` with `stdin=subprocess.PIPE` and separate stdout/stderr pipes, reading output in a dedicated thread to prevent blocking while the developer types input.
 
 ---
 
@@ -256,7 +300,7 @@ There is no paid tier, no enterprise tier, and no feature gating. Every feature 
 
 ### 9.3 No Telemetry
 
-The tool collects no usage data, no crash reports, and no analytics. Nothing is transmitted to ILX Studio's servers. The audit log lives entirely on the developer's machine and is never uploaded.
+The tool collects no usage data, no crash reports, and no analytics. Nothing is transmitted to ILX Studio's servers. The audit log and project memory database live entirely on the developer's machine and are never uploaded.
 
 ### 9.4 Contribution Model
 
@@ -289,7 +333,7 @@ pip install -e .
 ### 10.3 First Run
 
 ```bash
-ilx chat
+ilx
 ```
 
 On first run, the tool detects whether Ollama is available and, if so, begins routing to a local model immediately. No configuration is required.
@@ -297,30 +341,57 @@ On first run, the tool detects whether Ollama is available and, if so, begins ro
 ### 10.4 Adding a Cloud Provider
 
 ```bash
-ilx config set-key anthropic
+/provider openai
+/apikey set
 ```
 
 The tool prompts for the key, stores it in the OS keychain, and makes the provider available for the current and future sessions.
 
 ### 10.5 Switching Providers
 
+Within a session:
+
+```
+/provider groq
+```
+
+Or at launch:
+
 ```bash
-ilx --provider groq chat
-```
-
-Or within a session:
-
-```
-/route groq
+ilx --provider groq
 ```
 
 ### 10.6 Indexing a Workspace
 
-```bash
-ilx index .
+```text
+/workspace ~/projects/my-api
+/index build
 ```
 
-After indexing, all chat and command sessions have access to semantic search across the full codebase.
+After indexing, all chat and command sessions have access to semantic search across the full codebase, and `/symbol` lookups are available.
+
+### 10.7 Starting Project Memory
+
+```text
+/memory add team-convention "all API responses use snake_case JSON keys"
+/memory add test-runner "pytest with --tb=short; coverage threshold 80%"
+```
+
+These facts are available in all future sessions without requiring re-injection into context.
+
+### 10.8 Running the Debug Runner
+
+```text
+/debug src/my_script.py --arg value
+```
+
+After the script exits, run:
+
+```text
+/debug analyze
+```
+
+to get AI-powered diagnosis of any errors in the session log.
 
 ---
 
@@ -328,7 +399,7 @@ After indexing, all chat and command sessions have access to semantic search acr
 
 ### 11.1 Summary
 
-ILX AI CLI addresses a genuine and underserved need in the developer tooling ecosystem. The combination of local-first inference, multi-provider routing, a complete command set covering the full development workflow, a rigorous security and permission model, and an MIT-licensed open-source foundation makes it uniquely positioned for professional developers, regulated-industry teams, and organizations that cannot or will not accept the trade-offs of cloud-only, IDE-coupled, or single-provider tools.
+ILX AI CLI v1.0.0 addresses a genuine and underserved need in the developer tooling ecosystem. The combination of local-first inference, multi-provider routing, a complete command set covering the full development workflow, persistent project memory, an interactive debug runner with AI error analysis, a rigorous security and permission model, and an MIT-licensed open-source foundation makes it uniquely positioned for professional developers, regulated-industry teams, and organizations that cannot or will not accept the trade-offs of cloud-only, IDE-coupled, or single-provider tools.
 
 The tool was built because the team at ILX Studio needed it. That origin ensures that design decisions are grounded in real usage rather than market positioning. The features that exist are the features that were needed; the features that are absent were not yet needed or not yet ready.
 
@@ -341,12 +412,14 @@ The following capabilities are under active development or planned for near-term
 - Expanded `/fix-tests` heuristics for more testing frameworks and languages
 - Improved session resume with named session management
 - `--output json` flag across all commands for pipeline integration
+- `/memory import` and `/memory export` for team-shared project memory
 
 **Medium-term**
 - Multi-file agentic editing with conflict detection
 - Plugin API for community-contributed commands
 - Configurable RAG chunk strategies (file-level, function-level, line-range)
 - Team-shared session replay for collaborative code review
+- Debug runner support for non-Python runtimes (Node.js, Ruby, Go)
 
 **Long-term**
 - Local fine-tuning integration for project-specific model adaptation
@@ -355,7 +428,7 @@ The following capabilities are under active development or planned for near-term
 
 ### 11.3 A Note on Philosophy
 
-The development philosophy behind ILX AI CLI can be summarized simply: a developer tool should be in the developer's control. It should run where they work, use the model they choose, keep their data on their hardware, show them exactly what it is doing, and never require them to pay a subscription to access capabilities they already have on their machine.
+The development philosophy behind ILX AI CLI can be summarized simply: a developer tool should be in the developer's control. It should run where they work, use the model they choose, keep their data on their hardware, remember what matters across sessions, show them exactly what it is doing, and never require them to pay a subscription to access capabilities they already have on their machine.
 
 The open-source model is not incidental to this philosophy. It is the mechanism that makes it durable. Any developer who uses ILX AI CLI can read every line of code it executes, audit every decision it makes, and modify any behavior they disagree with. That is the standard the tool is held to, and it is the standard the team intends to maintain.
 

@@ -2,9 +2,10 @@
 
 [![CI](https://github.com/ilxstudio/ilx-ai-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ilxstudio/ilx-ai-cli/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/ilx-ai-cli?color=blue)](https://pypi.org/project/ilx-ai-cli/)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-75%25%2B-brightgreen)](https://github.com/ilxstudio/ilx-ai-cli/actions)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)](https://github.com/ilxstudio/ilx-ai-cli/actions)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/ilxstudio/ilx-ai-cli/releases/tag/v1.0.0)
 
 **Free. Open source. No subscriptions. No vendor lock-in. Works with any LLM — local or cloud.**
 
@@ -12,7 +13,8 @@ Run a full-featured AI coding assistant entirely on your machine using Ollama an
 Switch to Gemini, GPT-4o, or Groq in one command when you need more firepower.
 Your keys, your models, your data — none of it touches a third-party server unless you say so.
 
-This is the coding assistant that terminal developers actually want: audit logs, sandbox controls,
+This is the coding assistant that terminal developers actually want: persistent project memory,
+an interactive debug runner with AI error analysis, audit logs, sandbox controls,
 a real code-agent loop, test-fix automation, and MCP tool support — without a monthly bill or an IDE.
 
 ---
@@ -36,6 +38,8 @@ or ships your code to a vendor's server. ILX does none of those things.
 | Terminal native (no IDE) | Yes | No | No | Yes | No |
 | Code review mode | Yes | No | Partial | No | No |
 | Automated test-fix loop | Yes | No | No | Partial | Yes |
+| Persistent project memory | Yes | No | No | No | No |
+| Interactive debug runner | Yes | No | No | No | No |
 | Permission and sandbox controls | Yes | No | No | No | Partial |
 | Audit logging (JSONL) | Yes | No | No | No | No |
 | MCP tool support | Yes | No | No | No | No |
@@ -43,7 +47,8 @@ or ships your code to a vendor's server. ILX does none of those things.
 
 ### Why not Aider?
 
-Aider is solid. It pioneered the edit-loop pattern. ILX adds: permission profiles,
+Aider is solid. It pioneered the edit-loop pattern. ILX adds: persistent project memory,
+an interactive debug runner with AI error analysis, permission profiles,
 sandbox containment, a semantic codebase index, MCP tool integration, a test-fix loop,
 project scaffolding, Docker scaffolding, audit replay, and multi-provider routing — all in one REPL.
 
@@ -100,7 +105,7 @@ python main.py
 
 ### Requirements
 
-- Python 3.11 or later
+- Python 3.12 or later
 - Windows, macOS, or Linux
 - Ollama (optional but recommended for local/free operation)
 
@@ -129,7 +134,7 @@ ilx
 ```
 
 ```
-ILX AI CLI v0.3.0 — type /help for commands
+ILX AI CLI v1.0.0 — type /help for commands
 [ollama/qwen2.5-coder:7b] > /workspace ~/projects/my-api
 Workspace set: /home/user/projects/my-api (42 files indexed)
 
@@ -223,6 +228,70 @@ Approve plan? [Y/n]: y
 Done. 3 files changed, 47 lines added.
 
 [ollama/qwen2.5-coder:7b] > _
+```
+
+### Persistent project memory
+
+ILX remembers facts, decisions, and fix history across sessions. No need to re-explain your
+project conventions every time.
+
+```
+[ollama/qwen2.5-coder:7b] > /memory add auth-token-ttl "access tokens expire in 15 minutes, refresh in 7 days"
+Remembered: auth-token-ttl = access tokens expire in 15 minutes, refresh in 7 days
+
+[ollama/qwen2.5-coder:7b] > /memory show
+Project Memory  (3 facts)
+
+  2026-06-28  fact    auth-token-ttl  access tokens expire in 15 minutes, refresh in 7 days
+  2026-06-27  fact    db-engine       PostgreSQL 16, connection pool size 20
+  2026-06-25  fix     src/auth.py     CVV hardcoded to 3 digits — corrected to length check
+
+[ollama/qwen2.5-coder:7b] > /memory search auth
+Facts matching 'auth':
+  auth-token-ttl  access tokens expire in 15 minutes, refresh in 7 days
+
+Symbols matching 'auth':
+  function   validate_token   src/auth.py
+  class      AuthMiddleware   src/auth.py
+```
+
+### Interactive debug runner
+
+Run any Python script interactively inside ILX. Standard input passes through to the process.
+All output is captured and logged. When the program exits with an error, one command sends
+the error output to the active model for analysis.
+
+```
+[ollama/qwen2.5-coder:7b] > /debug src/process_orders.py --env staging
+Debug: src/process_orders.py --env staging
+  Session : debug_20260628_143201
+  Python  : .venv/bin/python
+  Log     : ~/.ilx_cli/debug/debug_20260628_143201.log
+
+  Connecting to staging database...
+  Loaded 1,204 orders.
+  Processing batch 1...
+  Traceback (most recent call last):
+    File "src/process_orders.py", line 87, in process_batch
+      total = sum(o["amount"] for o in orders)
+  TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'
+
+  Exited 1  2.3s
+  Log saved: ~/.ilx_cli/debug/debug_20260628_143201.log
+  1 error line(s) detected.
+  Run /debug analyze to get AI suggestions for these errors.
+
+[ollama/qwen2.5-coder:7b] > /debug analyze
+Analyzing session: debug_20260628_143201
+
+AI Analysis:
+  The error occurs at process_orders.py line 87. The orders list contains
+  records where the "amount" field is None. The fix is to filter or coerce:
+
+      total = sum(o["amount"] or 0 for o in orders)
+
+  If None is unexpected, add a validation step when loading orders to surface
+  the root cause earlier.
 ```
 
 ### Plan, review, then act
@@ -351,10 +420,36 @@ do not. 429 respects Retry-After header when present.
 /workspace <path>          set project workspace root
 /add <file>                add file to conversation context
 /index [build|status|clear] manage semantic codebase index
+/index explain <query>     search index and show scored results
 /research <question>       search indexed codebase with a question
+/symbol <name>             search the symbol index for matching names
+/rag status                show current RAG retrieval weights
+/rag bm25 <0.0-1.0>        set BM25 retrieval weight
+/rag semantic <0.0-1.0>    set semantic similarity weight
 /context                   show current context window usage
 /compact                   summarize conversation to free context window
 /export                    export conversation to file
+```
+
+### Project memory
+
+```text
+/memory show [query]       list stored facts, optionally filtered
+/memory add <key> <value>  remember a fact for this project
+/memory forget <key>       delete facts with the given key
+/memory fixes [file]       show past fix decisions
+/memory search <query>     search across all facts and symbols
+/memory stats              show memory database statistics
+```
+
+### Debug runner
+
+```text
+/debug <script.py> [args]  run a script interactively with stdin passthrough
+/debug log                 show output from the last debug session
+/debug logs                list recent debug sessions
+/debug analyze             AI analysis of errors from the last session
+/debug analyze <id>        AI analysis of a specific session by ID
 ```
 
 ### Planning and execution
@@ -471,7 +566,7 @@ do not. 429 respects Retry-After header when present.
 |---|---|
 | `ollama` | Runs locally. Free. Supports Llama 3, Qwen, Mistral, Phi, Gemma, DeepSeek, and any Ollama-compatible model. |
 | `openai` | GPT-4o, o3-mini, and other OpenAI models. BYO API key. |
-| `anthropic` | Sonnet, Haiku, and Opus class models. BYO API key. Prompt caching supported. |
+| `anthropic` | Frontier-class language models. BYO API key. Prompt caching supported. |
 | `groq` | Fast inference on open-weight models (Llama 3, Mixtral). BYO API key. |
 | `gemini` | Gemini models including free-tier access. BYO API key. |
 
@@ -527,6 +622,8 @@ The proposition is simple: ILX is the last AI coding tool you add to your termin
 - You do not switch tools for review vs. chat vs. code-agent. `/review`, `/chat`, `/code` are modes.
 - You do not switch tools when you need to check what the AI did. `/audit replay` shows everything.
 - You do not switch tools when you move to a new project. `/workspace` and `/index build` take 10 seconds.
+- You do not re-explain project context every session. `/memory` persists what matters.
+- You do not lose debug context between runs. `/debug` logs everything and `/debug analyze` explains it.
 
 The learning cost is one REPL, one set of slash commands, and one mental model. The payoff
 is a consistent, auditable, provider-agnostic AI assistant that works in every project and every
@@ -543,7 +640,8 @@ pip install -e ".[dev,all]"
 python -m pytest tests -q
 ```
 
-Current status: 677 passed, 1 failed (live LLM quality test — not a deterministic failure), 1 skipped.
+Current coverage: 85%. The test suite covers all core workflows, provider adapters,
+permission and sandbox logic, the RAG pipeline, project memory, and the debug runner.
 
 Live provider/model tests should be gated from CI runs where no API keys are present.
 
@@ -557,7 +655,7 @@ your bug reports, your model recommendations, and your workflow ideas.
 **Getting involved:**
 
 - Report bugs and request features: [GitHub Issues](https://github.com/ilxstudio/ilx-ai-cli/issues)
-- Read the full command guide: [USER_MANUAL.md](USER_MANUAL.md)
+- Read the full command guide: [docs/USER_MANUAL.md](docs/USER_MANUAL.md)
 - Submit pull requests: fork the repo, branch off `main`, open a PR with a clear description
 - Test with local models: the more models people test, the better the routing and prompting get
 

@@ -1,15 +1,4 @@
-"""Route engine — implements the route_strategy config field.
-
-Strategies:
-  auto       — use configured provider as-is (default)
-  free-only  — always use Ollama regardless of configured provider
-  local-only — same as free-only; alias for clarity
-  quality    — prefer cloud providers; fall back to Ollama only if no key
-
-The engine is consulted by LLM client factories before creating a client.
-
-Copyright 2026 ILX Studio — MIT License
-"""
+"""Route engine — implements the route_strategy config field."""
 from __future__ import annotations
 
 import logging
@@ -26,13 +15,10 @@ _FREE_LABEL = "free / local-only"
 
 
 def resolve_provider(cfg: AppConfig) -> str:
-    """Return the effective provider name after applying route_strategy.
-
-    This is the single authoritative place that translates route_strategy
-    into a concrete provider string.  Call it before constructing any LLM client.
-    """
+    """Return the effective provider name after applying route_strategy."""
     strategy = getattr(cfg, "route_strategy", "auto").lower().strip()
 
+    # free-only and local-only are aliases — always force ollama
     if strategy in ("free-only", "local-only"):
         if cfg.provider != "ollama":
             _log.debug("route_strategy=%s → forcing ollama (was %s)", strategy, cfg.provider)
@@ -41,7 +27,7 @@ def resolve_provider(cfg: AppConfig) -> str:
     if strategy == "quality":
         if cfg.provider in _CLOUD_PROVIDERS and _has_key(cfg.provider):
             return cfg.provider
-        # Look for any available cloud provider with a key
+        # walk the preferred cloud order until we find one with a key
         for p in ("anthropic", "openai", "groq", "gemini", "meta"):
             if _has_key(p):
                 _log.debug("quality route → %s (has key)", p)
@@ -75,9 +61,11 @@ def strategy_description(strategy: str) -> str:
     return descs.get(strategy.lower(), f"Unknown strategy '{strategy}'")
 
 
+# check keyring for a stored key — used by the quality strategy
 def _has_key(provider: str) -> bool:
     try:
         import keyring
         return bool(keyring.get_password("ilx_ai_cli", f"{provider}_api_key"))
-    except Exception:
+    except Exception as exc:
+        logging.debug("keyring lookup failed for %r: %s", provider, exc)
         return False

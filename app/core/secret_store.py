@@ -11,7 +11,7 @@ SERVICE = "ilx-cli"
 ACCOUNT = "api_key"
 ACCOUNT_LAST_USERNAME = "last_username"
 
-# Emitted at most once per process to avoid log spam.
+# emit at most once per process so we don't spam the log
 _KEYRING_WARNED: bool = False
 
 
@@ -20,7 +20,6 @@ def _password_account(username: str) -> str:
 
 
 def _warn_keyring_unavailable() -> None:
-    """Log a one-time WARNING when the keyring backend is not usable."""
     global _KEYRING_WARNED
     if not _KEYRING_WARNED:
         _KEYRING_WARNED = True
@@ -32,11 +31,7 @@ def _warn_keyring_unavailable() -> None:
 
 
 def is_keyring_available() -> bool:
-    """Return ``True`` if a real OS keyring backend is present and functional.
-
-    Callers can use this to display an appropriate warning to the user before
-    attempting to store or retrieve secrets.
-    """
+    """Return ``True`` if a real OS keyring backend is present and functional."""
     try:
         backend = keyring.get_keyring()
     except Exception:
@@ -111,6 +106,7 @@ def set_credentials(username: str, password: str) -> None:
         return
     try:
         keyring.set_password(SERVICE, _password_account(username), password)
+        # also store the last-used username so get_credentials() can default to it
         keyring.set_password(SERVICE, ACCOUNT_LAST_USERNAME, username)
     except Exception as exc:
         _log.debug("set_credentials: %s", exc)
