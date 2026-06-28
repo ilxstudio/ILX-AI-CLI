@@ -36,6 +36,9 @@ _SUBPROCESS_ALLOWED: frozenset[Path] = frozenset({
     _ROOT / "cli" / "commands" / "docker_cmds.py",
     _ROOT / "cli" / "commands" / "git_cmds.py",
     _ROOT / "cli" / "commands" / "workspace_cmds.py",
+    # debug_runner uses Popen for interactive stdin/stdout passthrough — this
+    # is the cli-layer interactive runner, not app/core, so Popen is correct.
+    _ROOT / "cli" / "debug_runner.py",
     # codex/app/runner.py uses Popen for streaming tool execution
     _ROOT / "codex" / "app" / "runner.py",
 })

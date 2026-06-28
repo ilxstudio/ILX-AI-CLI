@@ -140,7 +140,7 @@ class ILXApp:
             "/errors", "/free", "/setup", "/trust",
             "/plan", "/review", "/fix-tests", "/index", "/research",
             "/route", "/benchmark", "/audit", "/sandbox", "/permission",
-            "/allow", "/deny", "/plugins", "/rollback", "/checkpoint", "/memory", "/symbol", "/rag",  # noqa: E501
+            "/allow", "/deny", "/plugins", "/rollback", "/checkpoint", "/memory", "/symbol", "/rag", "/debug",  # noqa: E501
         })
 
     def _register_commands(self) -> None:
@@ -169,6 +169,7 @@ class ILXApp:
         r.register("/memory",     lambda a: __import__("cli.commands.memory_cmds", fromlist=["MemoryCommands"]).MemoryCommands(self._cfg).cmd_memory(a) or False)  # noqa: E501
         r.register("/symbol",     lambda a: __import__("cli.commands.index_cmds", fromlist=["cmd_symbol"]).cmd_symbol(" ".join(a), self._cfg) or False)  # noqa: E501
         r.register("/rag",        lambda a: __import__("cli.commands.index_cmds", fromlist=["cmd_rag"]).cmd_rag(a, self._cfg) or False)  # noqa: E501
+        r.register("/debug",      lambda a: __import__("cli.commands.debug_cmds", fromlist=["DebugCommands"]).DebugCommands(self._cfg).cmd_debug(a) or False)  # noqa: E501
 
     def _print_trust_summary(self) -> None:
         """Print a one-screen trust/config summary at startup (interactive only)."""
