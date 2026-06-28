@@ -1,35 +1,89 @@
 # ILX AI CLI
 
-Free, local-first AI CLI for developers who want control, privacy, auditability, and no subscription lock-in.
+**Free. Open source. No subscriptions. No vendor lock-in. Works with any LLM — local or cloud.**
 
-ILX AI CLI is a terminal coding assistant that can chat, inspect a workspace, edit files, run tests, review diffs, scaffold projects, build Docker assets, use local or cloud models, and keep an audit trail of what happened. It is designed to work well with local Ollama models first, while still supporting BYO API keys for major cloud providers.
+Run a full-featured AI coding assistant entirely on your machine using Ollama and Llama 3, Qwen, or Mistral.
+Switch to Gemini, GPT-4o, or Groq in one command when you need more firepower.
+Your keys, your models, your data — none of it touches a third-party server unless you say so.
 
-Current stage: **beta / active development**. The tool is usable for local-first workflows, controlled beta testing, and developer automation. Some advanced areas, especially OS-level sandboxing and MCP server interoperability, are still maturing.
+This is the coding assistant that terminal developers actually want: audit logs, sandbox controls,
+a real code-agent loop, test-fix automation, and MCP tool support — without a monthly bill or an IDE.
 
 ---
 
-## Why ILX?
+## Why ILX AI CLI Instead of the Others?
 
-| Need | ILX answer |
-|---|---|
-| Free forever | Local Ollama path, no subscription required |
-| Privacy | Local-first design and no telemetry-oriented workflow |
-| Model flexibility | Ollama, Anthropic, OpenAI, Groq, Gemini, Meta via Ollama |
-| Control | Permission profiles, command allow/deny lists, sandbox modes |
-| Auditability | JSONL audit log, replay/export/explain commands |
-| Practical coding | Code agent, patch tool, review mode, test-fix loop, scaffolding |
-| Portability | Pure terminal CLI, no IDE required |
+You have options. Here is why developers who try ILX tend to stop looking.
+
+### The short version
+
+Every mainstream AI coding tool either costs money, requires an IDE, locks you to one provider,
+or ships your code to a vendor's server. ILX does none of those things.
+
+### Comparison
+
+| Feature | ILX AI CLI | GitHub Copilot | Cursor | Aider | OpenHands |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Free and open source | Yes | No | No | Yes | Yes |
+| Local / offline mode | Yes | No | No | Partial | No |
+| Multi-provider (swap freely) | Yes | No | Partial | Yes | Partial |
+| Terminal native (no IDE) | Yes | No | No | Yes | No |
+| Code review mode | Yes | No | Partial | No | No |
+| Automated test-fix loop | Yes | No | No | Partial | Yes |
+| Permission and sandbox controls | Yes | No | No | No | Partial |
+| Audit logging (JSONL) | Yes | No | No | No | No |
+| MCP tool support | Yes | No | No | No | No |
+| No IDE required | Yes | No | No | Yes | No |
+
+### Why not Aider?
+
+Aider is solid. It pioneered the edit-loop pattern. ILX adds: permission profiles,
+sandbox containment, a semantic codebase index, MCP tool integration, a test-fix loop,
+project scaffolding, Docker scaffolding, audit replay, and multi-provider routing — all in one REPL.
+
+### Why not Cursor?
+
+Cursor is a fork of VS Code. If you live in the terminal, it is the wrong tool.
+It requires a subscription for the models that matter and does not support local models for most workflows.
+
+### Why not GitHub Copilot?
+
+Copilot is autocomplete with a chat tab bolted on. It has no code-agent loop, no test automation,
+no audit trail, no permission model, and no local mode. It costs money every month.
+
+### Why not OpenHands?
+
+OpenHands runs in Docker and in a browser UI. It is impressive for agent tasks but
+requires a container runtime, has no terminal REPL, and does not give you the per-command
+granularity that production engineers need when they want to know exactly what the AI touched.
+
+---
+
+## Privacy and Local-First Operation
+
+When you run ILX with an Ollama provider, nothing leaves your machine.
+
+- No telemetry. No usage analytics. No call-home.
+- Model inference runs on your hardware via Ollama.
+- File reads, patches, and test runs are local processes.
+- API keys, when used, are stored in the OS keychain — not in config files.
+- The audit log records what happened locally. You control it.
+
+The `/free` command shows you the current mode and which operations, if any, would touch a network.
+The `/route local-only` and `/route free-only` commands enforce that nothing goes to a cloud provider.
 
 ---
 
 ## Installation
+
+### From PyPI (recommended)
 
 ```bash
 pip install ilx-ai-cli
 ilx
 ```
 
-From source:
+### From Source
 
 ```bash
 git clone https://github.com/ilxstudio/ilx-ai-cli
@@ -38,439 +92,485 @@ pip install -e ".[all]"
 python main.py
 ```
 
-Requirements:
+### Requirements
 
-- Python 3.11+
-- Ollama for local models, optional but recommended
+- Python 3.11 or later
 - Windows, macOS, or Linux
+- Ollama (optional but recommended for local/free operation)
 
-Optional extras:
+### Optional extras
 
 ```bash
-pip install "ilx-ai-cli[all]"
-pip install "ilx-ai-cli[pdf]"
-pip install "ilx-ai-cli[docx]"
-pip install "ilx-ai-cli[xlsx]"
-pip install "ilx-ai-cli[image]"
-pip install rich
+pip install "ilx-ai-cli[all]"      # everything
+pip install "ilx-ai-cli[pdf]"      # PDF file support
+pip install "ilx-ai-cli[docx]"     # Word document support
+pip install "ilx-ai-cli[xlsx]"     # Spreadsheet support
+pip install "ilx-ai-cli[image]"    # Image file support
 ```
 
 ---
 
 ## Quick Start
 
-### Local-Only (Zero Data Leaves Your Machine)
+### Zero-config local session (no API key, no cost)
+
+Pull a local model with Ollama, then start ILX:
 
 ```bash
+ollama pull qwen2.5-coder:7b
 pip install ilx-ai-cli
 ilx
 ```
 
-Then in the REPL:
+```
+ILX AI CLI v0.3.0 — type /help for commands
+[ollama/qwen2.5-coder:7b] > /workspace ~/projects/my-api
+Workspace set: /home/user/projects/my-api (42 files indexed)
+
+[ollama/qwen2.5-coder:7b] > explain the auth flow in @src/auth.py
+Reading src/auth.py (187 lines)...
+
+The module uses JWT with a rotating secret. Tokens are issued at /auth/login,
+validated by a middleware decorator, and refreshed via /auth/refresh. The
+blacklist is an in-memory set — not suitable for multi-process deployments.
+
+[ollama/qwen2.5-coder:7b] > _
+```
+
+### Switch to cloud when you need it
 
 ```
-/model codellama:7b
-/code
+[ollama/qwen2.5-coder:7b] > /provider gemini
+Provider set: gemini
+
+[gemini/gemini-2.5-pro] > /apikey set
+Enter API key: ****
+Key stored in OS keychain.
+
+[gemini/gemini-2.5-pro] > _
 ```
 
-### With Cloud Provider
-
-```
-/provider anthropic
-/apikey set
-/chat
-```
-
-### Non-Interactive (CI / Scripting)
+### Non-interactive (CI / scripting)
 
 ```bash
 ilx --chat "explain main.py" --file main.py --quiet
-ilx --chat "list functions" --json
-```
-
-### Interactive Setup
-
-Start ILX:
-
-```bash
-ilx
-```
-
-Set your workspace:
-
-```text
-/workspace path/to/project
-```
-
-Use local models:
-
-```bash
-ollama pull qwen2.5-coder:7b
-ollama pull nomic-embed-text
-```
-
-```text
-/provider ollama
-/model qwen2.5-coder:7b
-```
-
-Ask a question:
-
-```text
-explain the auth flow in @src/auth.py
-```
-
-Switch to code-agent mode:
-
-```text
-/code
-add tests for the payment validator
-```
-
-Run a review:
-
-```text
-/review staged
-```
-
-Fix failing tests:
-
-```text
-/fix-tests
-```
-
----
-
-## Commands
-
-Key v0.3 commands available in the ILX REPL:
-
-| Command | Description |
-|---------|-------------|
-| `/plan <task>` | Plan a coding task step by step, then execute |
-| `/fix-tests [--max N] [--only P]` | Run tests, auto-fix failures with LLM, repeat |
-| `/index [build\|status\|clear]` | Build/manage the semantic codebase index |
-| `/review [staged\|security\|<file>]` | AI-powered code review |
-| `/research <question>` | Research using indexed codebase context |
-| `/route [status\|set <strategy>]` | Configure automatic model routing |
-| `/benchmark [quick\|full]` | Run LLM performance benchmarks |
-| `/audit [security\|quality\|deps]` | Workspace audit passes |
-| `/sandbox [mode]` | Configure sandbox containment mode |
-| `/permission [profile <name>]` | Manage permission profiles |
-| `/allow <cmd>` / `/deny <cmd>` | Add commands to allowlist or denylist |
-| `/provider <name>` | Switch active model provider |
-| `/model <name>` | Set the active model |
-| `/chat` | Enter chat mode |
-| `/code` | Enter code-agent mode |
-| `/add <file>` | Add a file to conversation context |
-| `/compact` | Summarize conversation to free context |
-| `/export` | Export conversation history |
-| `/git ai-commit` | Generate an AI commit message |
-| `/mcp list` | List registered MCP tools |
-| `/tool list` | List user-defined tools |
-| `/rules` | View/edit project rules |
-| `/status` | Show current configuration status |
-| `/free` | Show free/local mode status |
-| `/help` | Show all commands |
-
----
-
-## One-Shot Mode
-
-Use ILX in scripts or shell pipelines:
-
-```bash
-ilx --chat "explain this error"
 ilx --code "add unit tests for src/auth.py" --yes
 git diff | ilx --chat "summarize this diff" --quiet
 ilx --chat "list risks in this file @app.py" --json
 ```
 
-Supported flags:
+---
+
+## Core Workflows
+
+### Chat mode
+
+Ask questions about your codebase. Add files to context. Summarize and continue.
+
+```
+[ollama/qwen2.5:14b] > /chat
+Chat mode active.
+
+[ollama/qwen2.5:14b] > /add src/payments/validator.py
+Added src/payments/validator.py to context (3,241 tokens)
+
+[ollama/qwen2.5:14b] > what edge cases are we missing in the card validator?
+Analyzing validator.py...
+
+Missing edge cases:
+  1. Luhn check is skipped when card length < 13 — attacker could pass
+     a 12-digit number with any last digit.
+  2. Expiry comparison uses local time, not UTC — fails across midnight
+     in some timezones.
+  3. CVV length is hardcoded to 3; Amex uses 4.
+
+[ollama/qwen2.5:14b] > /compact
+Conversation summarized. Context freed.
+
+[ollama/qwen2.5:14b] > _
+```
+
+### Code agent mode
+
+The agent reads files, edits code, runs commands, and iterates — with your approval at each step.
+
+```
+[ollama/qwen2.5-coder:7b] > /code
+Code agent mode active. Tools: on
+
+[ollama/qwen2.5-coder:7b] > refactor the CSV parser and add tests
+Planning...
+  1. Read src/csv_parser.py
+  2. Identify refactoring opportunities
+  3. Write refactored version
+  4. Generate tests in tests/test_csv_parser.py
+  5. Run pytest
+
+Approve plan? [Y/n]: y
+
+[read] src/csv_parser.py ... done
+[edit] src/csv_parser.py ... done
+[write] tests/test_csv_parser.py ... done
+[exec] pytest tests/test_csv_parser.py -q
+  5 passed in 0.43s
+
+Done. 3 files changed, 47 lines added.
+
+[ollama/qwen2.5-coder:7b] > _
+```
+
+### Plan, review, then act
+
+```
+[ollama/qwen2.5-coder:7b] > /plan add rate limiting to the API
+Generating plan...
+
+Step 1: Add slowapi dependency to pyproject.toml
+Step 2: Initialize limiter in app/__init__.py
+Step 3: Apply @limiter.limit decorator to /auth/login, /api/search
+Step 4: Add 429 error handler with Retry-After header
+Step 5: Add tests in tests/test_rate_limiting.py
+
+Review the plan:
+  /plan approve   — execute all steps
+  /plan edit      — modify before executing
+  /plan cancel    — discard
+
+[ollama/qwen2.5-coder:7b] > /plan approve
+Executing...
+```
+
+### Code review
+
+```
+[ollama/qwen2.5:14b] > /review staged
+Reviewing 3 staged files...
+
+src/auth.py
+  LINE 47  — bcrypt.checkpw called with string, not bytes. This will raise
+             TypeError at runtime on Python 3.12+.
+  LINE 83  — JWT expiry is set to 30 days. Consider 15 minutes + refresh.
+
+src/api/users.py
+  LINE 112 — SQL query uses f-string interpolation. Use parameterized queries.
+
+src/tests/test_auth.py
+  No issues found.
+
+2 files with findings. Run /review security for a deeper pass.
+
+[ollama/qwen2.5:14b] > _
+```
+
+### Automated test-fix loop
+
+```
+[ollama/qwen2.5-coder:7b] > /fix-tests
+Running pytest...
+  12 passed, 3 failed
+
+Fixing failures...
+
+  FAIL tests/test_validator.py::test_amex_cvv
+  Root cause: CVV length check hardcoded to 3
+  Fix: src/payments/validator.py line 34 — updated length check
+  Re-run: PASS
+
+  FAIL tests/test_auth.py::test_token_expiry
+  Root cause: comparison uses local time
+  Fix: src/auth.py line 83 — switched to datetime.utcnow()
+  Re-run: PASS
+
+  FAIL tests/test_csv.py::test_empty_file
+  Root cause: IndexError on empty input
+  Fix: src/csv_parser.py line 12 — added early return
+  Re-run: PASS
+
+All tests passing. 15 passed in 1.2s.
+
+[ollama/qwen2.5-coder:7b] > _
+```
+
+### Semantic codebase index and research
+
+```
+[ollama/qwen2.5:14b] > /index build
+Indexing workspace: ~/projects/my-api
+  Files: 87   Chunks: 1,204   Embeddings: done
+
+[ollama/qwen2.5:14b] > /research "how does the retry logic work?"
+Searching index...
+
+Relevant files:
+  src/http_client.py:42   — RetryConfig dataclass, max_retries, backoff_factor
+  src/http_client.py:89   — _retry_request() with exponential backoff
+  tests/test_http.py:201  — tests for retry on 429 and 503
+
+Summary: HTTP client uses exponential backoff with jitter. Default is
+3 retries, 0.5s base delay, max 30s. 5xx errors retry; 4xx (except 429)
+do not. 429 respects Retry-After header when present.
+
+[ollama/qwen2.5:14b] > _
+```
+
+---
+
+## All Commands
+
+### Model and provider
 
 ```text
---chat       run one chat prompt and exit
---code, -c   run one code-agent task and exit
---yes        auto-approve permission prompts
---dry-run    show proposed work without writing
---json       machine-readable JSON-style output path
---quiet      reduce terminal decoration
---no-color   disable color-oriented output
+/provider <name>           switch provider: ollama, anthropic, openai, groq, gemini
+/model <name>              set active model (e.g. qwen2.5-coder:7b, gpt-4o, llama3.3)
+/models                    list available models for current provider
+/apikey set                store API key in OS keychain
+/apikey get                show masked key status
+/route auto                route tasks by capability automatically
+/route free-only           block all paid/cloud calls
+/route local-only          block all network model calls
+/route quality             always use highest-quality configured model
+/benchmark [quick|full]    benchmark current model for speed and quality
+```
+
+### Modes
+
+```text
+/chat                      enter conversational chat mode
+/code                      enter code-agent mode (file tools active)
+```
+
+### Context and files
+
+```text
+/workspace <path>          set project workspace root
+/add <file>                add file to conversation context
+/index [build|status|clear] manage semantic codebase index
+/research <question>       search indexed codebase with a question
+/context                   show current context window usage
+/compact                   summarize conversation to free context window
+/export                    export conversation to file
+```
+
+### Planning and execution
+
+```text
+/plan <task>               generate and review a step-by-step plan
+/plan approve              execute the current plan
+/plan cancel               discard the current plan
+```
+
+### Review and testing
+
+```text
+/review                    review current working changes
+/review staged             review git staged files
+/review security           security-focused review pass
+/review <file>             review a specific file
+/fix-tests [--max N]       run tests, auto-fix failures, repeat up to N rounds
+/fix-tests --only <path>   restrict fix-tests to a specific test file or directory
+```
+
+### Safety and permissions
+
+```text
+/permission status         show current permission profile
+/permission list           list all profiles
+/permission safe           activate conservative read-only profile
+/permission coding         activate standard coding profile
+/permission review         activate review-only profile
+/permission ci             activate CI-safe profile
+/permission locked         lock down all file write and exec
+/sandbox status            show sandbox containment mode
+/sandbox workspace         contain to workspace directory
+/sandbox read-only         no writes allowed
+/sandbox off --i-understand disable sandboxing (you accept the risk)
+/allow command <cmd>       add command to allowlist
+/deny command <cmd>        add command to denylist
+/allowlist                 show current allow and deny lists
+```
+
+### Audit and observability
+
+```text
+/audit                     run full audit of current workspace state
+/audit security            security-focused audit pass
+/audit quality             code quality audit
+/audit deps                dependency audit (known CVEs, outdated)
+/audit replay              replay the session audit log
+/audit explain             explain each logged event in plain language
+/audit export --csv        export audit log to CSV
+/audit diff                show audit diff from last session
+/metrics                   show session metrics: tokens, calls, cost estimate
+/status                    show full current configuration
+/free                      show local/free mode status and what would go to network
+```
+
+### Git
+
+```text
+/git status                git status in workspace
+/git diff                  git diff in workspace
+/git ai-commit             generate AI commit message from staged diff
+/git push                  push current branch
+/branch                    list or switch branches
+```
+
+### Scaffolding and project setup
+
+```text
+/init python               scaffold a Python project structure
+/init fastapi              scaffold a FastAPI project
+/init react                scaffold a React project
+/template list             list available project templates
+/scaffold dockerfile       generate a Dockerfile for current project
+/readme                    generate or update README from codebase
+/upgrade                   check for ILX CLI updates
+```
+
+### MCP tools
+
+```text
+/mcp init                  initialize MCP tool registry
+/mcp list                  list all registered MCP tools
+/mcp call <tool> <json>    call an MCP tool directly
+/mcp servers status        show connected MCP stdio servers
+/mcp servers connect       connect to an MCP stdio server
+/mcp servers tools         list tools from connected servers
+/mcp servers call <t> <j>  call a tool on a connected server
+```
+
+### User-defined tools
+
+```text
+/tool new                  create a new user-defined tool
+/tool list                 list user-defined tools
+/tool validate <name>      validate a tool definition
+/tool run <name> --help    run a tool with help output
+/tool remove <name>        remove a user-defined tool
+```
+
+### Rules and configuration
+
+```text
+/rules                     view active project rules
+/rules edit                open rules file for editing
+/help                      show full command list
 ```
 
 ---
 
 ## Providers
 
-| Provider | Use case | Notes |
-|---|---|---|
-| `ollama` | Free local development | No API key |
-| `meta` | Meta Llama via Ollama | No API key |
-| `anthropic` | Claude models | BYO key, prompt caching support |
-| `openai` | OpenAI models | BYO key |
-| `groq` | Fast hosted open-weight models | BYO key |
-| `gemini` | Gemini models/free-tier workflows | BYO key |
+| Provider | Notes |
+|---|---|
+| `ollama` | Runs locally. Free. Supports Llama 3, Qwen, Mistral, Phi, Gemma, DeepSeek, and any Ollama-compatible model. |
+| `openai` | GPT-4o, o3-mini, and other OpenAI models. BYO API key. |
+| `anthropic` | Sonnet, Haiku, and Opus class models. BYO API key. Prompt caching supported. |
+| `groq` | Fast inference on open-weight models (Llama 3, Mixtral). BYO API key. |
+| `gemini` | Gemini models including free-tier access. BYO API key. |
 
-Commands:
-
-```text
-/provider ollama
-/provider anthropic
-/apikey set
-/apikey get
-/model qwen2.5-coder:7b
-/models
-/route auto
-/route free-only
-/route local-only
-/route quality
-```
-
-API keys are stored in the OS keychain where available.
+API keys are stored in the OS keychain where supported. They are never written to config files on disk.
 
 ---
 
-## Core Workflows
+## Safety and Sandboxing
 
-### Chat
+ILX is built for real codebases and real consequences. The permission and sandbox system exists
+so you can let the agent run further without babysitting every keystroke — while still having
+a clear record of what it did.
 
-```text
-/chat
-/add src/auth.py
-explain this module
-/compact
-/export
-```
-
-### Code Agent
-
-```text
-/code
-/tools on
-refactor the CSV parser and run tests
-```
-
-Built-in tools include file read/write, directory listing, command execution, URL fetch, file conversion tools, and `apply_patch`.
-
-### Plan Then Act
-
-```text
-/plan add rate limiting to the API
-/plan approve
-/plan cancel
-```
-
-### Review
-
-```text
-/review
-/review staged
-/review security
-/review src/auth.py
-```
-
-### Test-Fix Loop
-
-```text
-/fix-tests
-/fix-tests --max 10
-/fix-tests --only tests/test_auth.py
-```
-
-### Repo Index And Research
-
-```text
-/index build
-/index status
-/research "how does authentication work?"
-/context
-```
-
-### Project Scaffolding
-
-```text
-/init python
-/init fastapi
-/init react
-/template list
-/upgrade
-/readme
-/scaffold dockerfile
-```
-
-### Docker
-
-```text
-/docker help
-/scaffold dockerfile
-```
-
-### Git
-
-```text
-/git status
-/git diff
-/git ai-commit
-/git push
-/branch
-```
-
----
-
-## Safety And Control
-
-ILX separates permission behavior from workspace policy as much as possible.
-
-Permission profiles:
-
-```text
-/permission status
-/permission list
-/permission safe
-/permission coding
-/permission review
-/permission ci
-/permission locked
-```
-
-Sandbox modes:
-
-```text
-/sandbox status
-/sandbox workspace
-/sandbox read-only
-/sandbox off --i-understand
-```
-
-Command allow/deny lists:
-
-```text
-/allow command pytest
-/allow command npm test
-/deny command rm
-/deny command git push
-/allowlist
-```
-
-Important beta limitation: current sandboxing is primarily policy/path based. It is not yet a complete OS-level containment layer for every command on every platform. Review commands before running untrusted code.
+Current sandbox modes control path containment and prevent writes or execs outside the workspace.
+Full OS-level process isolation (namespaces, seccomp) is on the roadmap. For now: review commands
+before approving network access or exec outside your workspace, especially on untrusted code.
 
 ---
 
 ## Audit Log
 
-ILX records file operations, permission decisions, commands, model calls, and network-related events in an audit log under `~/.ilx_cli`.
+Every session writes a JSONL audit log under `~/.ilx_cli`. The log records:
 
-```text
-/audit
-/audit security
-/audit quality
-/audit deps
-/audit replay
-/audit explain
-/audit export --csv
-/audit diff
-/metrics
-```
+- File reads and writes (path, byte count, hash)
+- Permission decisions (approved, denied, auto-approved)
+- Commands executed (command, exit code, stdout truncated)
+- Model calls (provider, model, token counts, latency)
+- Network requests (URL, method, status)
 
-Secret-shaped fields are redacted before logging.
+Secret-shaped fields are redacted before writing. The log never leaves your machine.
 
 ---
 
-## MCP And User Tools
+## Project Rules
 
-Built-in MCP-style tool registry:
+Rules files let you inject standing instructions into every prompt — project conventions,
+style guides, off-limit patterns, team preferences.
 
-```text
-/mcp init
-/mcp list
-/mcp call read_file {"path":"README.md"}
-```
-
-Stdio MCP server support:
-
-```text
-/mcp servers status
-/mcp servers example
-/mcp servers connect
-/mcp servers tools
-/mcp servers call server__tool {"arg":"value"}
-```
-
-User-defined tools:
-
-```text
-/tool new
-/tool list
-/tool validate my_tool
-/tool run my_tool --help
-/tool remove my_tool
-```
+| File | Scope |
+|---|---|
+| `.ilx_rules.md` | Project rules. Commit this to your repo. |
+| `.ilx_rules.local.md` | Personal overrides. Add to `.gitignore`. |
+| `~/.ilx_cli/rules.md` | Global rules applied to every workspace. |
 
 ---
 
-## Free/Local Onboarding
+## Once You Learn It, You Do Not Need Another Tool
 
-Commands designed for the free/local-first workflow:
+The proposition is simple: ILX is the last AI coding tool you add to your terminal workflow.
 
-```text
-/free
-/setup local
-/benchmark
-/route free-only
-/route local-only
-```
+- You do not switch tools when you switch models. `/provider` and `/model` handle it.
+- You do not switch tools when you go offline. Ollama keeps running.
+- You do not switch tools for review vs. chat vs. code-agent. `/review`, `/chat`, `/code` are modes.
+- You do not switch tools when you need to check what the AI did. `/audit replay` shows everything.
+- You do not switch tools when you move to a new project. `/workspace` and `/index build` take 10 seconds.
 
-Use these to verify what is local, what may call a cloud provider, and how well your configured local model performs.
+The learning cost is one REPL, one set of slash commands, and one mental model. The payoff
+is a consistent, auditable, provider-agnostic AI assistant that works in every project and every
+environment you deploy to.
 
 ---
 
-## Current Test Status
+## Development and Testing
 
-Latest local audit run:
-
-```text
-677 passed, 1 failed, 1 skipped
-```
-
-The remaining observed failure was a live/local LLM quality test, not a deterministic infrastructure failure. For release workflows, live provider/model tests should be run separately from deterministic unit and integration tests.
-
-Run tests:
+Run the test suite:
 
 ```bash
 pip install -e ".[dev,all]"
 python -m pytest tests -q
 ```
 
----
+Current status: 677 passed, 1 failed (live LLM quality test — not a deterministic failure), 1 skipped.
 
-## Project Rules
-
-Rules files are injected into prompts:
-
-| File | Scope |
-|---|---|
-| `.ilx_rules.md` | Project rules, commit to repo |
-| `.ilx_rules.local.md` | Personal local rules |
-| `~/.ilx_cli/rules.md` | Global rules |
-
-Use:
-
-```text
-/rules
-/rules edit
-```
+Live provider/model tests should be gated from CI runs where no API keys are present.
 
 ---
 
-## Documentation
+## Community and Contributing
 
-See [USER_MANUAL.md](USER_MANUAL.md) for the full command guide and operating manual.
+ILX AI CLI is MIT-licensed and community-driven. We want your pull requests,
+your bug reports, your model recommendations, and your workflow ideas.
 
-Recent audit files in this repository document the current release-readiness assessment and recommended hardening path.
+**Getting involved:**
+
+- Report bugs and request features: [GitHub Issues](https://github.com/ilxstudio/ilx-ai-cli/issues)
+- Read the full command guide: [USER_MANUAL.md](USER_MANUAL.md)
+- Submit pull requests: fork the repo, branch off `main`, open a PR with a clear description
+- Test with local models: the more models people test, the better the routing and prompting get
+
+**Contribution areas most needed right now:**
+
+- OS-level sandbox support (Linux namespaces, macOS sandbox-exec, Windows AppContainer)
+- Additional project scaffold templates
+- MCP server integrations and tool definitions
+- Embedding model coverage for codebase indexing
+- Test coverage for edge cases in provider adapters
+
+All contributors retain credit in the changelog. There is no CLA.
 
 ---
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT License. Copyright 2026 ILX Studio, LLC. See [LICENSE](LICENSE) for the full text.
 
+This software is provided as-is. Use it in production at your own judgment.
+The audit log and permission system exist precisely because AI agents make mistakes —
+keep them engaged and review what the agent proposes before approving destructive operations.

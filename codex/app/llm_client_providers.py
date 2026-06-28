@@ -107,10 +107,8 @@ class AnthropicClient(BaseLLMClient):
             r.raise_for_status()
             return r
         try:
-            resp = _call_with_retry(_do, provider="Anthropic")
+            resp = _call_with_retry(_do, provider="Anthropic", cloud=True)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                _handle_rate_limit(exc, "Anthropic")
             raise RuntimeError(
                 f"Anthropic HTTP {exc.response.status_code}: {exc.response.text[:300]}"
             ) from exc
@@ -139,10 +137,8 @@ class AnthropicClient(BaseLLMClient):
             r.raise_for_status()
             return r
         try:
-            resp = _call_with_retry(_do, provider="Anthropic")
+            resp = _call_with_retry(_do, provider="Anthropic", cloud=True)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                _handle_rate_limit(exc, "Anthropic")
             raise RuntimeError(
                 f"Anthropic HTTP {exc.response.status_code}: {exc.response.text[:300]}"
             ) from exc
@@ -246,10 +242,8 @@ class AnthropicClient(BaseLLMClient):
             r.raise_for_status()
             return r
         try:
-            resp = _call_with_retry(_do, provider="Anthropic")
+            resp = _call_with_retry(_do, provider="Anthropic", cloud=True)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                _handle_rate_limit(exc, "Anthropic")
             raise RuntimeError(
                 f"Anthropic HTTP {exc.response.status_code}: {exc.response.text[:300]}"
             ) from exc
@@ -339,10 +333,8 @@ class OpenAIClient(BaseLLMClient):
             r.raise_for_status()
             return r
         try:
-            resp = _call_with_retry(_do, provider="OpenAI")
+            resp = _call_with_retry(_do, provider="OpenAI", cloud=True)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                _handle_rate_limit(exc, "OpenAI")
             raise RuntimeError(
                 f"OpenAI HTTP {exc.response.status_code}: {exc.response.text[:300]}"
             ) from exc
@@ -371,10 +363,8 @@ class OpenAIClient(BaseLLMClient):
             r.raise_for_status()
             return r
         try:
-            resp = _call_with_retry(_do, provider="OpenAI")
+            resp = _call_with_retry(_do, provider="OpenAI", cloud=True)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                _handle_rate_limit(exc, "OpenAI")
             raise RuntimeError(
                 f"OpenAI HTTP {exc.response.status_code}: {exc.response.text[:300]}"
             ) from exc
@@ -466,10 +456,8 @@ class OpenAIClient(BaseLLMClient):
             r.raise_for_status()
             return r
         try:
-            resp = _call_with_retry(_do, provider="OpenAI")
+            resp = _call_with_retry(_do, provider="OpenAI", cloud=True)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 429:
-                _handle_rate_limit(exc, "OpenAI")
             raise RuntimeError(
                 f"OpenAI HTTP {exc.response.status_code}: {exc.response.text[:300]}"
             ) from exc

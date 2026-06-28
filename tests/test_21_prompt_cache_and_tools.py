@@ -90,7 +90,7 @@ def test_anthropic_chat_use_cache_adds_cache_control_to_system():
         captured_body.update(json or {})
         return _make_mock_response(body_response)
 
-    with patch("httpx.post", side_effect=fake_post):
+    with patch.object(client._client, "post", side_effect=fake_post):
         client.chat(
             [{"role": "user", "content": "hi"}],
             system="You are a helpful assistant.",
@@ -132,7 +132,7 @@ def test_anthropic_chat_use_cache_adds_cache_control_to_last_user_message():
         {"role": "assistant", "content": "got it"},
         {"role": "user", "content": "second message"},
     ]
-    with patch("httpx.post", side_effect=fake_post):
+    with patch.object(client._client, "post", side_effect=fake_post):
         client.chat(messages, use_cache=True)
 
     sent_msgs = captured_body.get("messages", [])
@@ -191,7 +191,7 @@ def test_token_usage_parses_cache_tokens_from_response():
             "cache_read_input_tokens": 300,
         },
     }
-    with patch("httpx.post", return_value=_make_mock_response(body_response)):
+    with patch.object(client._client, "post", return_value=_make_mock_response(body_response)):
         client.chat([{"role": "user", "content": "hello"}], use_cache=True)
 
     assert client.last_usage.prompt_tokens == 100
@@ -229,7 +229,7 @@ def test_anthropic_chat_with_tools_use_cache():
         captured_body.update(json or {})
         return _make_mock_response(body_response)
 
-    with patch("httpx.post", side_effect=fake_post):
+    with patch.object(client._client, "post", side_effect=fake_post):
         text, tool_calls = client.chat_with_tools(
             [{"role": "user", "content": "hello"}],
             system="You are helpful.",
@@ -264,7 +264,7 @@ def test_openai_parallel_tool_calls_in_body():
         captured_body.update(json or {})
         return _make_mock_response(body_response)
 
-    with patch("httpx.post", side_effect=fake_post):
+    with patch.object(client._client, "post", side_effect=fake_post):
         client.chat_with_tools(
             [{"role": "user", "content": "hello"}],
             tools=BUILTIN_TOOL_DEFS,
@@ -291,7 +291,7 @@ def test_openai_no_parallel_tool_calls_without_tools():
         captured_body.update(json or {})
         return _make_mock_response(body_response)
 
-    with patch("httpx.post", side_effect=fake_post):
+    with patch.object(client._client, "post", side_effect=fake_post):
         client.chat_with_tools([{"role": "user", "content": "hello"}], tools=None)
 
     assert "parallel_tool_calls" not in captured_body

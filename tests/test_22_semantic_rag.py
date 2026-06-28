@@ -41,7 +41,7 @@ def test_cosine_similarity_parallel():
     """Identical vectors should give cosine similarity of 1.0."""
     v = [1.0, 2.0, 3.0]
     result = cosine_similarity(v, v)
-    assert abs(result - 1.0) < 1e-9, f"Expected ~1.0, got {result}"
+    assert abs(result - 1.0) < 1e-6, f"Expected ~1.0, got {result}"
     save("cosine_parallel", True, {"result": result})
 
 

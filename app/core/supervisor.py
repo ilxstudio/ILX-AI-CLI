@@ -598,7 +598,7 @@ class ProcessSupervisor:
             if exit_code not in _kill_codes:
                 try:
                     from app.core import crash_db
-                    snippet = "\n".join(task.output_tail[-20:])
+                    snippet = "\n".join(list(task.output_tail)[-20:])
                     crash_db.record(" ".join(task.command), exit_code, snippet)
                 except Exception as exc:
                     _log.warning("Supervisor crash_db record failed for task %s: %s", task_id, exc)

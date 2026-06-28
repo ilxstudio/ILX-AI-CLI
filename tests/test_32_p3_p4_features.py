@@ -744,36 +744,33 @@ class TestIndexCmds:
 # ===========================================================================
 
 class TestAppWiring:
-    def test_all_commands_includes_plan(self):
+    def _make_app(self):
         from cli.app import ILXApp
+        from cli.command_registry import CommandRegistry
         with patch("cli.app.ILXApp.__init__", return_value=None):
             app = ILXApp.__new__(ILXApp)
             app._alias_store = MagicMock()
-            cmds = app._all_commands()
+            app._registry = CommandRegistry()
+            return app
+
+    def test_all_commands_includes_plan(self):
+        app = self._make_app()
+        cmds = app._all_commands()
         assert "/plan" in cmds
 
     def test_all_commands_includes_review(self):
-        from cli.app import ILXApp
-        with patch("cli.app.ILXApp.__init__", return_value=None):
-            app = ILXApp.__new__(ILXApp)
-            app._alias_store = MagicMock()
-            cmds = app._all_commands()
+        app = self._make_app()
+        cmds = app._all_commands()
         assert "/review" in cmds
 
     def test_all_commands_includes_fix_tests(self):
-        from cli.app import ILXApp
-        with patch("cli.app.ILXApp.__init__", return_value=None):
-            app = ILXApp.__new__(ILXApp)
-            app._alias_store = MagicMock()
-            cmds = app._all_commands()
+        app = self._make_app()
+        cmds = app._all_commands()
         assert "/fix-tests" in cmds
 
     def test_all_commands_includes_index(self):
-        from cli.app import ILXApp
-        with patch("cli.app.ILXApp.__init__", return_value=None):
-            app = ILXApp.__new__(ILXApp)
-            app._alias_store = MagicMock()
-            cmds = app._all_commands()
+        app = self._make_app()
+        cmds = app._all_commands()
         assert "/index" in cmds
 
 

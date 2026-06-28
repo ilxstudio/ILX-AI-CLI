@@ -160,8 +160,9 @@ def test_cloud_clients_no_retry():
         (OpenAIClient,    {"api_key": "test-key"}),
     ]:
         client = ClientClass(**extra)
-        with patch("httpx.post") as mock_post:
-            mock_post.side_effect = _connect_error()
+        # Clients use a persistent httpx.Client instance (self._client.post)
+        # so we patch the instance's post method directly.
+        with patch.object(client._client, "post", side_effect=_connect_error()) as mock_post:
             with pytest.raises((RuntimeError, httpx.ConnectError)):
                 client.chat([{"role": "user", "content": "hi"}])
 

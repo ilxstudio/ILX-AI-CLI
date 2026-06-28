@@ -96,7 +96,7 @@ def test_anthropic_chat_with_tools_returns_tool_call():
         ],
         "usage": {"input_tokens": 50, "output_tokens": 20},
     }
-    with patch("httpx.post", return_value=_make_mock_response(body)):
+    with patch.object(client._client, "post", return_value=_make_mock_response(body)):
         text, tool_calls = client.chat_with_tools(
             [{"role": "user", "content": "read the README"}],
             tools=BUILTIN_TOOL_DEFS,
@@ -118,7 +118,7 @@ def test_anthropic_chat_with_tools_returns_text():
         "content": [{"type": "text", "text": "Hello from Claude"}],
         "usage": {"input_tokens": 40, "output_tokens": 15},
     }
-    with patch("httpx.post", return_value=_make_mock_response(body)):
+    with patch.object(client._client, "post", return_value=_make_mock_response(body)):
         text, tool_calls = client.chat_with_tools(
             [{"role": "user", "content": "hello"}],
             tools=BUILTIN_TOOL_DEFS,
@@ -151,7 +151,7 @@ def test_openai_chat_with_tools_returns_tool_call():
         }],
         "usage": {"prompt_tokens": 60, "completion_tokens": 25},
     }
-    with patch("httpx.post", return_value=_make_mock_response(body)):
+    with patch.object(client._client, "post", return_value=_make_mock_response(body)):
         text, tool_calls = client.chat_with_tools(
             [{"role": "user", "content": "list the workspace"}],
             tools=BUILTIN_TOOL_DEFS,
@@ -173,7 +173,7 @@ def test_openai_chat_with_tools_returns_text():
         "choices": [{"message": {"content": "Hello from GPT", "tool_calls": None}}],
         "usage": {"prompt_tokens": 30, "completion_tokens": 10},
     }
-    with patch("httpx.post", return_value=_make_mock_response(body)):
+    with patch.object(client._client, "post", return_value=_make_mock_response(body)):
         text, tool_calls = client.chat_with_tools(
             [{"role": "user", "content": "hello"}],
             tools=BUILTIN_TOOL_DEFS,

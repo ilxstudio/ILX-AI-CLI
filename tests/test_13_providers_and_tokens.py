@@ -109,7 +109,7 @@ def test_anthropic_chat_token_usage():
         "content": [{"type": "text", "text": "Hello from Claude"}],
         "usage": {"input_tokens": 55, "output_tokens": 25},
     }
-    with patch("httpx.post", return_value=_make_mock_response(body)):
+    with patch.object(client._client, "post", return_value=_make_mock_response(body)):
         result = client.chat([{"role": "user", "content": "hi"}])
     assert "Hello" in result
     assert client.last_usage.prompt_tokens == 55
@@ -153,7 +153,7 @@ def test_openai_chat_token_usage():
         "choices": [{"message": {"content": "Hello from GPT"}}],
         "usage": {"prompt_tokens": 80, "completion_tokens": 40},
     }
-    with patch("httpx.post", return_value=_make_mock_response(body)):
+    with patch.object(client._client, "post", return_value=_make_mock_response(body)):
         result = client.chat([{"role": "user", "content": "hi"}])
     assert "Hello" in result
     assert client.last_usage.prompt_tokens == 80
@@ -199,17 +199,18 @@ def test_groq_chat_delegates():
         "choices": [{"message": {"content": "Hello from Groq"}}],
         "usage": {"prompt_tokens": 45, "completion_tokens": 22},
     }
-    with patch("httpx.post", return_value=_make_mock_response(body)) as mock_post:
+    # Groq uses OpenAIClient internally; _client.base_url contains the Groq URL
+    inner_http_client = client._inner._client
+    with patch.object(inner_http_client, "post", return_value=_make_mock_response(body)):
         result = client.chat([{"role": "user", "content": "hi"}])
 
-    # Verify the inner client targeted the Groq base URL
-    call_args = mock_post.call_args
-    url_called = call_args[0][0] if call_args[0] else call_args[1].get("url", "")
-    assert "groq.com" in url_called, f"Expected groq.com in URL, got: {url_called}"
+    # Verify the inner httpx.Client targets the Groq base URL
+    base_url = str(inner_http_client.base_url)
+    assert "groq.com" in base_url, f"Expected groq.com in base_url, got: {base_url}"
     assert "Hello" in result
     assert client.last_usage.prompt_tokens == 45
     assert client.last_usage.completion_tokens == 22
-    save("groq_chat_delegates", True, {"url": url_called})
+    save("groq_chat_delegates", True, {"url": base_url})
 
 
 def test_groq_stream_delegates():

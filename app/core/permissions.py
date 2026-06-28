@@ -123,7 +123,14 @@ class PermissionEngine:
                 return False
             # "workspace" and "disabled" fall through to normal permission flow
 
-        # Profile-aware decision — takes priority over raw mode
+        if mode == PermissionMode.DENY_ALL:
+            audit.log_permission_decision(
+                kind=kind, target=target, decision="denied",
+                mode=mode_label, source="permission_engine", detail="deny_all",
+            )
+            return False
+
+        # Profile-aware decision — takes priority over AUTO_APPROVE / ASK modes
         profile_decision = self._apply_profile(kind)
         if profile_decision == "allow":
             audit.log_permission_decision(
@@ -135,13 +142,6 @@ class PermissionEngine:
             audit.log_permission_decision(
                 kind=kind, target=target, decision="denied",
                 mode=mode_label, source="permission_engine", detail="profile_deny",
-            )
-            return False
-
-        if mode == PermissionMode.DENY_ALL:
-            audit.log_permission_decision(
-                kind=kind, target=target, decision="denied",
-                mode=mode_label, source="permission_engine", detail="deny_all",
             )
             return False
 

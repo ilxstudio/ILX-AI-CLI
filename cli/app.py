@@ -140,6 +140,9 @@ class ILXApp:
             "/fetch", "/tool", "/ssh", "/tools", "/mcp", "/metrics", "/attach",
             "/context", "/version", "/export", "/alias", "/copy",
             "/errors", "/free", "/setup",
+            "/plan", "/review", "/fix-tests", "/index", "/research",
+            "/route", "/benchmark", "/audit", "/sandbox", "/permission",
+            "/allow", "/deny",
         })
 
     def _register_commands(self) -> None:

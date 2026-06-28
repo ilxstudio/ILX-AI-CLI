@@ -111,8 +111,13 @@ def _retry_with_backoff(
     raise last_exc
 
 
-def _call_with_retry(fn, *, provider: str = "", max_retries: int = 3):
-    """Call fn(), retrying on transient/rate-limit errors with exponential backoff."""
+def _call_with_retry(fn, *, provider: str = "", max_retries: int = 3, cloud: bool = False):
+    """Call fn(), retrying on transient/rate-limit errors with exponential backoff.
+
+    When ``cloud=True``, connectivity errors (ConnectError, timeout) are NOT
+    retried — cloud providers should fail-fast so callers can surface actionable
+    errors quickly rather than hanging for multiple retry cycles.
+    """
     from app.core.error_classifier import classify_error, ErrorClass
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
@@ -120,6 +125,13 @@ def _call_with_retry(fn, *, provider: str = "", max_retries: int = 3):
             return fn()
         except Exception as exc:
             classified = classify_error(exc, provider)
+            # Cloud clients must not retry connectivity errors (fail fast).
+            if cloud and isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+                raise
+            # Cloud clients handle 429 via _handle_rate_limit (one wait, then raise).
+            if cloud and isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
+                _handle_rate_limit(exc, provider)
+                return  # _handle_rate_limit always raises — this is unreachable
             if not classified.should_retry or attempt == max_retries:
                 raise
             wait = classified.retry_after if classified.retry_after > 0 else (2 ** attempt)

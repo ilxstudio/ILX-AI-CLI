@@ -165,9 +165,9 @@ def test_rate_limit_429_openai(capsys):
         response=mock_resp,
     )
 
-    # Patch httpx.post to raise the 429 error
+    # Patch client._client.post to raise the 429 error
     # _handle_rate_limit (called on 429) lives in llm_client_base; patch there
-    with patch("httpx.post", side_effect=exc):
+    with patch.object(client._client, "post", side_effect=exc):
         with patch("codex.app.llm_client_base.time.sleep") as mock_sleep:
             with pytest.raises(RuntimeError) as exc_info:
                 client.generate("hello")
