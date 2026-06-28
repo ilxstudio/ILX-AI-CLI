@@ -113,6 +113,8 @@ class CodeSession:
                 print(f"Files written: {', '.join(result.files_written)}")
             if result.final_output:
                 print(f"\n{result.final_output}")
+            if getattr(cfg, "autofix_enabled", False):
+                self._run_autofix()
             if is_git and result.files_written:
                 try:
                     ans = input(f"\n  {DIM}Commit these changes to git? [y/N] {RESET}").strip().lower()
@@ -239,6 +241,8 @@ class CodeSession:
                 print(f"Files written: {', '.join(result.files_written)}")
             if result.final_output:
                 print(f"\n{result.final_output}")
+            if getattr(cfg, "autofix_enabled", False):
+                self._run_autofix()
             if is_git and result.files_written:
                 try:
                     ans = input(f"\n  {DIM}Commit these changes to git? [y/N] {RESET}").strip().lower()
@@ -257,3 +261,34 @@ class CodeSession:
                 print(f"Error: {result.final_error}")
         print()
         return result.success
+
+    def _run_autofix(self) -> None:
+        """Run the test-fix loop after a successful code task."""
+        from cli.display import DIM, GREEN, RESET, YELLOW
+        from app.core.test_fix_loop import TestFixLoop, detect_test_runner
+
+        cfg = self.cfg
+        wf = cfg.working_folder
+        if not wf:
+            return
+
+        runner = detect_test_runner(wf)
+        print(f"\n{DIM}Auto test-fix: running {runner[0]}...{RESET}")
+
+        def _on_progress(attempt: int, failures_before: int, output: str) -> None:
+            print(f"  {DIM}[attempt {attempt}] {failures_before} failure(s)...{RESET}")
+
+        loop = TestFixLoop(
+            cfg=cfg,
+            max_attempts=getattr(cfg, "autofix_max_iterations", 5),
+        )
+        result = loop.run(
+            working_folder=wf,
+            runner=runner,
+            on_progress=_on_progress,
+        )
+        if result.final_pass:
+            print(f"  {GREEN}All tests pass.{RESET}")
+        else:
+            iterations = len(result.attempts)
+            print(f"  {YELLOW}Tests still failing after {iterations} iteration(s).{RESET}")

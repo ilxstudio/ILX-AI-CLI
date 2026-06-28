@@ -164,6 +164,7 @@ def parse_argv(cfg: AppConfig | None = None) -> tuple[str | None, str]:
     auto_yes = os.environ.get("ILX_YES") == "1"
     dry_run = False
     output_mode = "ansi"
+    autofix: bool | None = None  # None means "use config default"
 
     if "--yes" in argv:
         auto_yes = True
@@ -184,6 +185,12 @@ def parse_argv(cfg: AppConfig | None = None) -> tuple[str | None, str]:
             # Use output_mode quiet only if not already overridden to json
             if output_mode == "ansi":
                 output_mode = "quiet"
+    if "--autofix" in argv:
+        autofix = True
+        argv = [a for a in argv if a != "--autofix"]
+    if "--no-autofix" in argv:
+        autofix = False
+        argv = [a for a in argv if a != "--no-autofix"]
 
     # Apply to config if provided
     if cfg is not None:
@@ -192,6 +199,8 @@ def parse_argv(cfg: AppConfig | None = None) -> tuple[str | None, str]:
         if dry_run:
             cfg.dry_run = True
         cfg.output_mode = output_mode
+        if autofix is not None:
+            cfg.autofix_enabled = autofix
 
     prompt = " ".join(argv).strip() if argv else ""
     return mode, prompt

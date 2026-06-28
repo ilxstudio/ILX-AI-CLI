@@ -41,6 +41,8 @@ class AppConfig:
     fallback_providers:    list[str]      = field(default_factory=list)  # providers to try on failure
     sandbox_mode:          str            = "workspace"    # "workspace" | "read_only" | "disabled"
     route_strategy:        str            = "auto"         # "auto"|"free-only"|"local-only"|"quality"
+    rag_bm25_weight:       float          = 0.6            # BM25 score threshold (0.0–1.0)
+    rag_semantic_weight:   float          = 0.75           # Semantic similarity threshold (0.0–1.0)
     permission_profile:    str            = "coding"       # "safe"|"coding"|"review"|"ci"|"locked"
     command_allowlist:     list[str]      = field(default_factory=list)   # commands auto-approved without prompting
     command_denylist:      list[str]      = field(default_factory=list)   # commands always blocked
@@ -107,14 +109,20 @@ class ConfigManager:
         except ValueError:
             cfg.permission_mode = PermissionMode.ASK
 
-        cfg.route_strategy = self._qs.value("route_strategy", "auto", str)
-        cfg.permission_profile = self._qs.value("permission_profile", "coding", str)
+        cfg.route_strategy       = self._qs.value("route_strategy",       "auto",  str)
+        cfg.rag_bm25_weight      = self._qs.value("rag_bm25_weight",      cfg.rag_bm25_weight,    float)
+        cfg.rag_semantic_weight  = self._qs.value("rag_semantic_weight",  cfg.rag_semantic_weight, float)
+        cfg.permission_profile   = self._qs.value("permission_profile",   "coding", str)
         cfg.command_allowlist = self._qs.value("command_allowlist", [], list)
         cfg.command_denylist  = self._qs.value("command_denylist",  [], list)
 
         # Environment overrides applied after disk load
         if os.environ.get("ILX_YES") == "1":
             cfg.auto_yes = True
+
+        # ILX_FREE_TIER=1 forces route_strategy to "free-only" (local Ollama, no API cost)
+        if os.environ.get("ILX_FREE_TIER") == "1":
+            cfg.route_strategy = "free-only"
 
         errors = cfg.validate()
         for err in errors:
@@ -139,6 +147,8 @@ class ConfigManager:
         self._qs.setValue("system_prompt",          cfg.system_prompt)
         self._qs.setValue("tool_use_enabled",       cfg.tool_use_enabled)
         self._qs.setValue("route_strategy",         cfg.route_strategy)
+        self._qs.setValue("rag_bm25_weight",        cfg.rag_bm25_weight)
+        self._qs.setValue("rag_semantic_weight",    cfg.rag_semantic_weight)
         self._qs.setValue("permission_profile",     cfg.permission_profile)
         self._qs.setValue("command_allowlist",      cfg.command_allowlist)
         self._qs.setValue("command_denylist",       cfg.command_denylist)

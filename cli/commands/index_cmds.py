@@ -93,15 +93,52 @@ class IndexCommands:
         out("")
 
     def _index_explain(self, args: list[str]) -> None:
-        """Answer a question about what the index knows."""
+        """Show retrieved chunks for a query — file names, scores, and content preview.
+
+        When local indexed chunks are available, retrieves them directly via
+        HybridRetriever for transparency (score + file + preview).  Falls back
+        to ResearchRunner (LLM-synthesised answer) when the in-memory index is
+        empty so that /index explain is still useful before /index build is run.
+        """
         if not args:
-            out(f"  {YELLOW}Usage: /index explain <question>{RESET}\n")
+            out(f"  {YELLOW}Usage: /index explain <query>{RESET}\n")
             return
-        question = " ".join(args)
+        query = " ".join(args)
+        retriever = self._get_retriever()
+        out(f"\n{BOLD}Index query:{RESET} {query}\n")
+
+        # Try direct chunk retrieval first (index must be non-empty)
+        sem = retriever._get_semantic()
+        if sem is not None and getattr(sem, "_files", {}):
+            from app.core.rag import chunk_text, rank_chunks_scored
+
+            files = list(sem._files.items())
+            all_chunks = []
+            for name, content in files:
+                if isinstance(name, str) and isinstance(content, str):
+                    all_chunks.extend(chunk_text(name, content))
+
+            if all_chunks:
+                scored = rank_chunks_scored(all_chunks, query, top_k=8)
+                if scored:
+                    out(f"  {DIM}Top {len(scored)} result(s):{RESET}\n")
+                    for score, chunk in scored:
+                        preview = chunk.text[:200].replace("\n", " ").strip()
+                        if len(chunk.text) > 200:
+                            preview += "..."
+                        out(f"  {GREEN}[score {score:.3f}]{RESET}  {CYAN}{chunk.file}{RESET}  "
+                            f"lines {chunk.line_start}–{chunk.line_end}")
+                        out(f"    {DIM}{preview}{RESET}\n")
+                    out("")
+                    return
+                out(f"  {DIM}No matching chunks found.{RESET}\n")
+                out("")
+                return
+
+        # Fallback: LLM-synthesised answer via ResearchRunner
         from app.core.research_runner import ResearchRunner
         runner = ResearchRunner(self._cfg)
-        out(f"\n{BOLD}Searching index:{RESET} {question}\n")
-        result = runner.query(question, working_folder=self._cfg.working_folder)
+        result = runner.query(query, working_folder=self._cfg.working_folder)
         if result.error:
             out_error(f"  {RED}{result.error}{RESET}\n")
             return
@@ -131,3 +168,98 @@ class IndexCommands:
             from app.core.hybrid_retriever import HybridRetriever
             self._retriever = HybridRetriever(self._cfg)
         return self._retriever
+
+
+def cmd_rag(args: list[str], cfg) -> None:
+    """/rag — tune RAG similarity thresholds.
+
+    /rag bm25 <0.0-1.0>      Set BM25 score threshold
+    /rag semantic <0.0-1.0>  Set semantic similarity threshold
+    /rag status               Show current weights
+    """
+    from app.core.config import ConfigManager
+
+    sub = args[0].lower() if args else "status"
+
+    if sub == "status":
+        bm25_w    = getattr(cfg, "rag_bm25_weight",     0.6)
+        sem_w     = getattr(cfg, "rag_semantic_weight",  0.75)
+        out(f"\n{BOLD}RAG Thresholds{RESET}")
+        out(f"  BM25 weight    : {GREEN}{bm25_w:.2f}{RESET}")
+        out(f"  Semantic weight: {GREEN}{sem_w:.2f}{RESET}\n")
+        return
+
+    if sub in ("bm25", "semantic") and len(args) >= 2:
+        try:
+            value = float(args[1])
+        except ValueError:
+            out_error(f"  {RED}Invalid value {args[1]!r} — must be a float between 0.0 and 1.0{RESET}\n")
+            return
+        if not 0.0 <= value <= 1.0:
+            out_error(f"  {RED}Value must be between 0.0 and 1.0, got {value}{RESET}\n")
+            return
+        if sub == "bm25":
+            cfg.rag_bm25_weight = value
+            out(f"  {GREEN}[ok]{RESET} BM25 weight set to {value:.2f}\n")
+        else:
+            cfg.rag_semantic_weight = value
+            out(f"  {GREEN}[ok]{RESET} Semantic weight set to {value:.2f}\n")
+        ConfigManager().save(cfg)
+        return
+
+    out(f"\n{BOLD}/rag{RESET} — tune RAG similarity thresholds")
+    out(f"  {CYAN}/rag bm25 <0.0-1.0>{RESET}      Set BM25 score threshold")
+    out(f"  {CYAN}/rag semantic <0.0-1.0>{RESET}  Set semantic similarity threshold")
+    out(f"  {CYAN}/rag status{RESET}               Show current weights\n")
+
+
+def cmd_symbol(query: str, cfg) -> None:
+    """/symbol <query> — search the symbol index for matching names."""
+    wf = cfg.working_folder
+    index_path = Path(wf) / ".project_index" if wf else None
+    if not wf or (index_path is not None and not index_path.exists()):
+        # Index may live in-memory; still attempt, but warn if workspace is unset
+        if not wf:
+            out(f"  {YELLOW}[!]{RESET} No workspace set. Run {CYAN}/workspace <path>{RESET} then {CYAN}/index build{RESET}.\n")
+            return
+
+    query = query.strip()
+    if not query:
+        out(f"  {YELLOW}Usage: /symbol <name>{RESET}\n")
+        return
+
+    from app.core.hybrid_retriever import HybridRetriever
+    retriever = HybridRetriever(cfg)
+
+    # Access the symbol index directly (dict[symbol_name -> file_path])
+    symbol_index: dict[str, str] = retriever._symbol_index  # type: ignore[attr-defined]
+
+    if not symbol_index:
+        out(f"  {YELLOW}[!]{RESET} Symbol index is empty. Run {CYAN}/index build{RESET} first.\n")
+        return
+
+    q_lower = query.lower()
+    matches = [
+        (name, path)
+        for name, path in symbol_index.items()
+        if q_lower in name.lower()
+    ]
+
+    if not matches:
+        out(f"  {DIM}No symbols matching {query!r}.{RESET}\n")
+        return
+
+    out(f"\n{BOLD}Symbols matching {query!r}:{RESET}")
+    for name, path in sorted(matches, key=lambda x: x[0].lower()):
+        # Determine kind from file suffix
+        suffix = Path(path).suffix.lower()
+        if suffix == ".py":
+            kind = "py"
+        elif suffix in {".ts", ".tsx"}:
+            kind = "ts"
+        elif suffix in {".js", ".jsx"}:
+            kind = "js"
+        else:
+            kind = suffix.lstrip(".") or "?"
+        out(f"  {CYAN}{kind:<6}{RESET}  {GREEN}{name:<40}{RESET}  {DIM}{path}{RESET}")
+    out("")

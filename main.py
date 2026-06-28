@@ -107,6 +107,8 @@ def main() -> None:
         print("  --json              Output responses as JSON")
         print("  --no-color          Disable ANSI color output")
         print("  --dry-run           Show what would be done without executing")
+        print("  --autofix           Auto-run test-fix loop after each /code task")
+        print("  --no-autofix        Disable auto test-fix (overrides config)")
         print()
         print("Interactive mode (no arguments): start the REPL, then type /help for commands.")
         print()
@@ -129,12 +131,12 @@ def main() -> None:
     cfg = mgr.load()
 
     if not sys.stdin.isatty():
-        mode, prompt = parse_argv()
+        mode, prompt = parse_argv(cfg)
         if not prompt:
             run_pipe_mode(cfg)
             return
 
-    mode, prompt = parse_argv()
+    mode, prompt = parse_argv(cfg)
     if prompt:
         if mode == "chat":
             run_argv_chat(prompt, cfg)

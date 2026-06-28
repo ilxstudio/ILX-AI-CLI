@@ -140,7 +140,7 @@ class ILXApp:
             "/errors", "/free", "/setup", "/trust",
             "/plan", "/review", "/fix-tests", "/index", "/research",
             "/route", "/benchmark", "/audit", "/sandbox", "/permission",
-            "/allow", "/deny", "/plugins", "/rollback", "/checkpoint", "/memory",  # noqa: E501
+            "/allow", "/deny", "/plugins", "/rollback", "/checkpoint", "/memory", "/symbol", "/rag",  # noqa: E501
         })
 
     def _register_commands(self) -> None:
@@ -162,11 +162,13 @@ class ILXApp:
         r.register("/allow",     lambda args: self._allowlist.cmd_allow(args) or False)
         r.register("/deny",      lambda args: self._allowlist.cmd_deny(args) or False)
         r.register("/allowlist", lambda args: self._allowlist.cmd_allowlist(args) or False)
-        r.register("/plugins",    lambda a: __import__("cli.commands.plugin_cmds", fromlist=["cmd_plugins"]).cmd_plugins(a, self._cfg) or False)   # noqa: E501
-        r.register("/trust",      lambda a: __import__("cli.commands.trust_dashboard", fromlist=["cmd_trust"]).cmd_trust(a, self._cfg) or False)      # noqa: E501
-        r.register("/rollback",   lambda a: __import__("cli.commands.rollback_cmds", fromlist=["cmd_rollback"]).cmd_rollback(a, self._cfg) or False)   # noqa: E501
+        r.register("/plugins",    lambda a: __import__("cli.commands.plugin_cmds", fromlist=["cmd_plugins"]).cmd_plugins(a, self._cfg) or False)  # noqa: E501
+        r.register("/trust",      lambda a: __import__("cli.commands.trust_dashboard", fromlist=["cmd_trust"]).cmd_trust(a, self._cfg) or False)  # noqa: E501
+        r.register("/rollback",   lambda a: __import__("cli.commands.rollback_cmds", fromlist=["cmd_rollback"]).cmd_rollback(a, self._cfg) or False)  # noqa: E501
         r.register("/checkpoint", lambda a: __import__("cli.commands.rollback_cmds", fromlist=["cmd_checkpoint"]).cmd_checkpoint(a, self._cfg) or False)  # noqa: E501
         r.register("/memory",     lambda a: __import__("cli.commands.memory_cmds", fromlist=["MemoryCommands"]).MemoryCommands(self._cfg).cmd_memory(a) or False)  # noqa: E501
+        r.register("/symbol",     lambda a: __import__("cli.commands.index_cmds", fromlist=["cmd_symbol"]).cmd_symbol(" ".join(a), self._cfg) or False)  # noqa: E501
+        r.register("/rag",        lambda a: __import__("cli.commands.index_cmds", fromlist=["cmd_rag"]).cmd_rag(a, self._cfg) or False)  # noqa: E501
 
     def _print_trust_summary(self) -> None:
         """Print a one-screen trust/config summary at startup (interactive only)."""
@@ -369,7 +371,6 @@ class ILXApp:
         elif cmd == "/clear":
             self._chat.clear()
             print(f"{DIM}Conversation history and pinned context cleared.{RESET}")
-
         elif cmd == "/undo":
             removed = self._chat.undo()
             if removed:
@@ -385,10 +386,8 @@ class ILXApp:
             print(self._sessions.format_listing(sessions))
         elif cmd == "/resume":
             self._do_resume(args)
-
         elif cmd == "/session":
             self._cmd_session(args)
-
         elif cmd == "/status":
             self._settings.cmd_status()
         elif cmd == "/server":

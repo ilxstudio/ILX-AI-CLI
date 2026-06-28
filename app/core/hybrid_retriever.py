@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("ilx_cli.hybrid_retriever")
 
+# ── Configurable score defaults ───────────────────────────────────────────────
+# These can be overridden via AppConfig.rag_bm25_weight / rag_semantic_weight.
+_BM25_SCORE_DEFAULT     = 0.6
+_SEMANTIC_SCORE_DEFAULT = 0.75
+
 # Regex patterns for symbol extraction in non-Python languages.
 _LANG_SYMBOL_RE: dict[str, re.Pattern] = {
     ".js": re.compile(
@@ -175,6 +180,16 @@ class HybridRetriever:
         self._semantic = None                       # lazy — avoid heavy import on startup
         self._symbol_index: dict[str, str] = {}    # symbol_name -> file_path
         self._mtime_cache: dict[str, float] = {}   # str(path) -> last known mtime
+        # Score thresholds — read from cfg when available, else fall back to module defaults.
+        # Guard against MagicMock / non-numeric values in tests.
+        try:
+            self._bm25_score = float(cfg.rag_bm25_weight)
+        except (AttributeError, TypeError, ValueError):
+            self._bm25_score = _BM25_SCORE_DEFAULT
+        try:
+            self._semantic_score = float(cfg.rag_semantic_weight)
+        except (AttributeError, TypeError, ValueError):
+            self._semantic_score = _SEMANTIC_SCORE_DEFAULT
 
     # ── public API ────────────────────────────────────────────────────────
 
@@ -299,7 +314,7 @@ class HybridRetriever:
             try:
                 bm25_text = sem.query(query, top_k=top_k, max_chars=max_chars)
                 if bm25_text and bm25_text.strip():
-                    results.extend(_parse_rag_blocks(bm25_text, 0.6, "bm25"))
+                    results.extend(_parse_rag_blocks(bm25_text, self._bm25_score, "bm25"))
             except Exception as exc:
                 _log.debug("BM25 retrieve error: %s", exc)
 
@@ -308,7 +323,7 @@ class HybridRetriever:
             try:
                 sem_text = sem.query(query, top_k=top_k, max_chars=max_chars)
                 if sem_text and sem_text.strip():
-                    results.extend(_parse_rag_blocks(sem_text, 0.75, "semantic"))
+                    results.extend(_parse_rag_blocks(sem_text, self._semantic_score, "semantic"))
             except Exception as exc:
                 _log.debug("Semantic retrieve error: %s", exc)
 
