@@ -94,6 +94,11 @@ pip install ilx-ai-cli
 ilx
 ```
 
+> **Linux:** If `ilx` is not found after install, add `~/.local/bin` to your PATH:
+> ```bash
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> ```
+
 ### From Source
 
 ```bash
