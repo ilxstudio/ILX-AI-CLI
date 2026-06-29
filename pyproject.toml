@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ilx-ai-cli"
-version = "1.0.0"
+version = "1.0.1"
 description = "Free, local-first AI coding assistant for terminal developers"
 readme = "README.md"
 license = { text = "MIT" }
