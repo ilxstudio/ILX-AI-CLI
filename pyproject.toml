@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ilx-ai-cli"
-version = "1.0.1"
+version = "1.0.2"
 description = "Free, local-first AI coding assistant for terminal developers"
 readme = "README.md"
 license = { text = "MIT" }
@@ -53,7 +53,7 @@ all = [
 ]
 
 [project.scripts]
-ilx = "main:main"
+ilx = "cli.entry:main"
 
 [project.entry-points."ilx_ai.plugins"]
 # Third-party plugins go here
